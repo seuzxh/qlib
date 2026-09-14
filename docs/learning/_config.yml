@@ -1,0 +1,20 @@
+# Jekyll 配置：docs/learning 学习笔记站点
+title: Qlib 学习笔记
+description: 由浅入深系统学习微软 qlib 量化投资框架的学习方案与笔记
+theme: jekyll-theme-cayman
+
+plugins:
+  # 无 front matter 的 .md 也参与渲染（课程笔记不加头部也能显示）
+  - jekyll-optional-front-matter
+  # README.md 作为站点首页 index.html
+  - jekyll-readme-index
+  # 把 .md 相对链接自动转为 .html（课程间互相跳转必需）
+  - jekyll-relative-links
+  # 用首个 H1 作为页面标题
+  - jekyll-titles-from-headings
+
+# 实践代码目录原样作为静态文件发布，可在页面上直接下载
+include:
+  - code
+
+markdown: GFM
