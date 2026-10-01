@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRA 案例深度解析 · Qlib 市场状态路由</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700;900&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0a0d13;
+  --ink-2:#0e131c;
+  --panel:#121826;
+  --panel-2:#171f30;
+  --line:#2630475e;
+  --line-solid:#28344f;
+  --paper:#e9e4d8;
+  --muted:#8b97ad;
+  --muted-2:#627089;
+  --amber:#e9b44c;
+  --amber-soft:#f3cf85;
+  --amber-dim:#b98a2e;
+  --up:#e5484d;
+  --down:#2fbf71;
+  --cyan:#6db8d8;
+  --violet:#a78bfa;
+  --serif:"Noto Serif SC",serif;
+  --sans:"Noto Sans SC",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--ink);
+  color:var(--paper);
+  font-family:var(--sans);
+  font-weight:300;
+  line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+/* grid paper background */
+body::before{
+  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(var(--line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:56px 56px;
+  mask-image:radial-gradient(ellipse 90% 70% at 50% 0%,#000 30%,transparent 100%);
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(700px 380px at 82% -4%,rgba(233,180,76,.13),transparent 60%),
+    radial-gradient(900px 500px at 8% 12%,rgba(109,184,216,.07),transparent 60%);
+}
+.wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:0 32px}
+
+/* ============ HERO ============ */
+header.hero{padding:120px 0 72px;border-bottom:1px solid var(--line-solid);position:relative}
+.kicker{
+  font-family:var(--mono);font-size:12px;letter-spacing:.32em;text-transform:uppercase;
+  color:var(--amber);display:flex;align-items:center;gap:14px;margin-bottom:34px;
+}
+.kicker::before{content:"";width:42px;height:1px;background:var(--amber)}
+h1{
+  font-family:var(--serif);font-weight:900;
+  font-size:clamp(38px,6vw,72px);line-height:1.12;letter-spacing:.01em;
+}
+h1 .accent{color:var(--amber);position:relative;white-space:nowrap}
+h1 .accent::after{
+  content:"";position:absolute;left:0;right:0;bottom:.06em;height:.14em;
+  background:var(--amber);opacity:.22;
+}
+.lede{margin-top:30px;max-width:720px;font-size:18px;color:#c3cbd9;font-weight:300}
+.lede strong{color:var(--amber-soft);font-weight:500}
+.meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:42px}
+.chip{
+  font-family:var(--mono);font-size:12px;color:#aeb9cc;
+  border:1px solid var(--line-solid);border-radius:2px;padding:7px 13px;
+  background:rgba(18,24,38,.6);backdrop-filter:blur(4px);
+}
+.chip b{color:var(--amber-soft);font-weight:600}
+.hero-toc{
+  margin-top:54px;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;
+  background:var(--line-solid);border:1px solid var(--line-solid);
+}
+.toc-item{
+  background:var(--ink-2);padding:18px 20px;text-decoration:none;color:var(--muted);
+  font-size:13.5px;transition:.25s;display:flex;gap:12px;align-items:baseline;
+}
+.toc-item:hover{background:var(--panel-2);color:var(--paper)}
+.toc-item .n{font-family:var(--mono);color:var(--amber-dim);font-size:11px}
+
+/* ============ SECTIONS ============ */
+section{padding:96px 0;border-bottom:1px solid var(--line-solid)}
+.sec-head{display:flex;align-items:baseline;gap:22px;margin-bottom:18px}
+.sec-num{font-family:var(--mono);font-size:13px;color:var(--amber);letter-spacing:.2em}
+h2{font-family:var(--serif);font-weight:700;font-size:clamp(26px,3.4vw,38px);line-height:1.3}
+.sec-sub{color:var(--muted);font-size:15px;margin-bottom:48px;max-width:760px}
+h3{font-family:var(--serif);font-weight:700;font-size:21px;margin:0 0 14px;color:var(--paper)}
+p{margin:0 0 16px}
+p.note{color:var(--muted);font-size:14.5px}
+strong.hl{color:var(--amber-soft);font-weight:500}
+code.il{font-family:var(--mono);font-size:.86em;background:#1d263a;border:1px solid var(--line-solid);
+  border-radius:3px;padding:1px 7px;color:var(--amber-soft)}
+
+/* reveal */
+.rv{opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1)}
+.rv.in{opacity:1;transform:none}
+
+/* ============ TIMELINE (label) ============ */
+.timeline-card{
+  background:linear-gradient(180deg,var(--panel),var(--ink-2));
+  border:1px solid var(--line-solid);padding:44px 36px 36px;position:relative;
+}
+.tl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;position:relative;margin-top:8px}
+.tl-day{text-align:center;position:relative;padding:0 10px}
+.tl-dot{
+  width:14px;height:14px;border-radius:50%;margin:0 auto 16px;position:relative;z-index:2;
+  background:var(--ink);border:2px solid var(--muted-2);
+}
+.tl-day.hot .tl-dot{border-color:var(--amber);box-shadow:0 0 0 5px rgba(233,180,76,.13),0 0 22px rgba(233,180,76,.5)}
+.tl-day.sell .tl-dot{border-color:var(--down);box-shadow:0 0 0 5px rgba(47,191,113,.12)}
+.tl-day::before{
+  content:"";position:absolute;top:6px;height:2px;background:var(--line-solid);
+  left:calc(50% + 14px);right:calc(-50% + 14px);z-index:1;
+}
+.tl-day:last-child::before{display:none}
+.tl-tag{font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--muted-2);margin-bottom:6px}
+.tl-day.hot .tl-tag{color:var(--amber)}
+.tl-title{font-family:var(--serif);font-weight:700;font-size:17px;margin-bottom:8px}
+.tl-desc{font-size:13px;color:var(--muted);line-height:1.7}
+.tl-arrow{
+  margin-top:30px;display:flex;justify-content:center;align-items:center;gap:14px;
+  font-family:var(--mono);font-size:13px;
+}
+.tl-arrow .seg{padding:9px 18px;border:1px solid var(--line-solid);background:var(--panel-2);border-radius:2px}
+.tl-arrow .seg.real{border-color:var(--amber-dim);color:var(--amber-soft)}
+.tl-arrow .seg.fake{border-style:dashed;color:var(--muted-2)}
+.tl-arrow .x{color:var(--up);font-size:18px}
+
+.formula-row{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:34px}
+.formula{
+  background:var(--ink);border:1px solid var(--line-solid);padding:22px 24px;border-radius:3px;position:relative;
+}
+.formula.bad{border-color:#5e2a2e66}
+.formula.good{border-color:#8a6728aa}
+.formula .flag{
+  position:absolute;top:-11px;left:18px;font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;
+  padding:2px 10px;border-radius:2px;
+}
+.formula.bad .flag{background:#5e2a2e;color:#f1a8aa}
+.formula.good .flag{background:#8a6728;color:#1a1407}
+.formula .fexpr{font-family:var(--mono);font-size:15px;margin:10px 0 12px;color:var(--paper)}
+.formula .fdesc{font-size:13px;color:var(--muted)}
+
+.reason-list{margin-top:40px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.reason{
+  border:1px solid var(--line-solid);background:var(--panel);padding:24px;border-radius:3px;
+  transition:.25s;
+}
+.reason:hover{border-color:var(--amber-dim);transform:translateY(-3px)}
+.reason .rn{font-family:var(--mono);font-size:11px;color:var(--amber-dim);letter-spacing:.2em}
+.reason h4{font-family:var(--serif);font-size:17px;margin:10px 0 8px}
+.reason p{font-size:13.5px;color:var(--muted);margin:0}
+
+/* ============ PROBLEM compare ============ */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.duo .panel{border:1px solid var(--line-solid);background:var(--panel);border-radius:3px;padding:28px}
+.duo .panel h3 .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.15em;padding:3px 9px;border-radius:2px;margin-left:10px;vertical-align:middle}
+.tag.old{background:#26303f;color:var(--cyan)}
+.tag.tra{background:#3d2f14;color:var(--amber)}
+.duo svg{width:100%;height:auto;margin:8px 0 14px;display:block}
+.duo ul{list-style:none;font-size:13.5px;color:var(--muted)}
+.duo li{padding:7px 0 7px 22px;position:relative;border-bottom:1px dashed var(--line-solid)}
+.duo li:last-child{border-bottom:0}
+.duo li::before{content:"→";position:absolute;left:0;color:var(--amber-dim);font-family:var(--mono)}
+.paper-ref{margin-top:18px;font-size:12.5px;color:var(--muted-2);font-family:var(--mono)}
+
+/* ============ ARCHITECTURE ============ */
+.arch{
+  background:linear-gradient(180deg,#0d1320,#0a0e16);
+  border:1px solid var(--line-solid);border-radius:4px;padding:46px 30px;overflow-x:auto;
+}
+.arch-inner{min-width:760px;display:flex;flex-direction:column;gap:0}
+.arch-row{display:grid;grid-template-columns:170px 1fr;align-items:stretch;gap:26px;margin-bottom:14px}
+.arch-label{
+  font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--muted-2);
+  display:flex;align-items:center;writing-mode:initial;
+}
+.arch-node{
+  background:var(--panel-2);border:1px solid var(--line-solid);border-radius:3px;
+  padding:16px 20px;position:relative;
+}
+.arch-node .nt{font-weight:500;font-size:14.5px;color:var(--paper)}
+.arch-node .nd{font-size:12.5px;color:var(--muted);margin-top:3px}
+.arch-node.input{border-left:3px solid var(--cyan)}
+.arch-node.base{border-left:3px solid var(--violet)}
+.arch-node.out{border-left:3px solid var(--amber)}
+.arch-vline{width:2px;height:22px;background:var(--line-solid);margin-left:calc(85px + 26px)}
+.expert-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.expert{
+  border:1px solid var(--line-solid);background:var(--panel);border-radius:3px;padding:14px 16px;text-align:center;
+  transition:.25s;
+}
+.expert:hover{border-color:var(--amber);box-shadow:0 0 24px rgba(233,180,76,.12)}
+.expert .ek{font-family:var(--mono);font-size:11px;color:var(--amber)}
+.expert .en{font-size:13.5px;margin-top:4px}
+.expert .ed{font-size:11.5px;color:var(--muted-2);margin-top:3px}
+.router-flow{display:grid;grid-template-columns:1fr 220px 1fr;align-items:center;gap:18px;margin-top:6px}
+.router-box{
+  border:1px dashed var(--amber-dim);background:rgba(233,180,76,.06);border-radius:3px;padding:18px 20px;text-align:center;
+}
+.router-box .rt{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--amber)}
+.router-box .rprob{font-family:var(--mono);font-size:13px;margin-top:8px;color:var(--paper)}
+.router-box .rprob span{color:var(--amber-soft)}
+.wire-label{font-family:var(--mono);font-size:10.5px;color:var(--muted-2);text-align:center;line-height:1.6}
+.arch-legend{display:flex;gap:22px;flex-wrap:wrap;margin-top:26px;font-size:12px;color:var(--muted)}
+.arch-legend i{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:7px}
+.final-pred{
+  margin-top:6px;background:linear-gradient(90deg,rgba(233,180,76,.14),rgba(233,180,76,.03));
+  border:1px solid var(--amber-dim);border-radius:3px;padding:16px 20px;
+  font-family:var(--mono);font-size:14px;text-align:center;color:var(--amber-soft);
+}
+
+/* ============ MECHANISM cards ============ */
+.mech-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.mech{
+  background:var(--panel);border:1px solid var(--line-solid);border-radius:3px;padding:28px 26px;
+  position:relative;transition:.25s;
+}
+.mech:hover{transform:translateY(-3px);border-color:var(--line-solid)}
+.mech .mn{
+  font-family:var(--mono);font-size:34px;color:transparent;-webkit-text-stroke:1px var(--amber-dim);
+  position:absolute;top:14px;right:20px;font-weight:600;
+}
+.mech h3{padding-right:60px}
+.mech p{font-size:13.5px;color:var(--muted)}
+.mech .math{
+  font-family:var(--mono);font-size:12.5px;background:var(--ink);border:1px solid var(--line-solid);
+  border-radius:2px;padding:11px 14px;margin-top:12px;color:#c7d2e3;overflow-x:auto;white-space:nowrap;
+}
+.mech .math b{color:var(--amber-soft);font-weight:600}
+
+/* ============ TRAIN steps ============ */
+.train-flow{display:grid;grid-template-columns:1fr 60px 1fr;align-items:stretch;gap:0;margin-bottom:34px}
+.train-step{background:var(--panel);border:1px solid var(--line-solid);border-radius:3px;padding:26px}
+.train-step h3{display:flex;align-items:center;gap:12px}
+.train-step .step-n{
+  font-family:var(--mono);font-size:11px;background:var(--amber);color:#1a1407;
+  width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+}
+.train-step ul{list-style:none;font-size:13.5px;color:var(--muted)}
+.train-step li{padding:6px 0 6px 18px;position:relative}
+.train-step li::before{content:"·";position:absolute;left:4px;color:var(--amber);font-weight:700}
+.train-mid{display:flex;align-items:center;justify-content:center;color:var(--amber);font-family:var(--mono)}
+
+/* param table */
+table.params{width:100%;border-collapse:collapse;font-size:13.5px}
+table.params th{
+  text-align:left;font-family:var(--mono);font-size:11px;letter-spacing:.15em;color:var(--amber);
+  border-bottom:1px solid var(--amber-dim);padding:12px 14px;font-weight:600;text-transform:uppercase;
+}
+table.params td{border-bottom:1px solid var(--line-solid);padding:13px 14px;color:var(--muted);vertical-align:top}
+table.params td:first-child{font-family:var(--mono);color:var(--paper);font-size:12.5px;white-space:nowrap}
+table.params td code{color:var(--amber-soft)}
+table.params tr:hover td{background:rgba(233,180,76,.035)}
+
+/* ============ CODE / TABS ============ */
+.code-shell{border:1px solid var(--line-solid);border-radius:4px;overflow:hidden;background:#0b101a}
+.code-bar{
+  display:flex;align-items:center;gap:8px;padding:12px 18px;background:#0e1420;border-bottom:1px solid var(--line-solid);
+}
+.code-bar .dot{width:9px;height:9px;border-radius:50%;background:#2a3550}
+.code-bar .fname{margin-left:10px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.tabs{margin-left:auto;display:flex;gap:4px}
+.tab-btn{
+  font-family:var(--mono);font-size:11px;background:transparent;border:1px solid var(--line-solid);
+  color:var(--muted);padding:5px 12px;border-radius:2px;cursor:pointer;transition:.2s;
+}
+.tab-btn.active{background:var(--amber);color:#1a1407;border-color:var(--amber)}
+pre.code{
+  padding:26px 28px;font-family:var(--mono);font-size:12.8px;line-height:1.75;
+  color:#aeb9cc;overflow-x:auto;display:none;
+}
+pre.code.active{display:block}
+.code .k{color:#c792ea}.code .s{color:#9ece8c}.code .n{color:#f3cf85}.code .c{color:#5a6783;font-style:italic}
+.code .anchor{color:var(--cyan)}
+.code .hl-line{background:rgba(233,180,76,.08);display:block;margin:0 -28px;padding:0 28px;border-left:2px solid var(--amber)}
+
+/* ============ RUN ============ */
+.run-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:20px}
+.terminal{
+  background:#070a10;border:1px solid var(--line-solid);border-radius:4px;padding:24px 26px;
+  font-family:var(--mono);font-size:12.8px;line-height:2;color:#9fb0c8;
+}
+.terminal .prompt{color:var(--down)}
+.terminal .cmd{color:var(--paper)}
+.terminal .out{color:var(--muted-2)}
+.run-notes{border:1px solid var(--line-solid);background:var(--panel);border-radius:4px;padding:26px}
+.run-notes h4{font-family:var(--serif);font-size:16px;margin-bottom:12px;color:var(--amber-soft)}
+.run-notes ul{list-style:none;font-size:13.5px;color:var(--muted)}
+.run-notes li{padding:8px 0 8px 22px;position:relative;border-bottom:1px dashed var(--line-solid)}
+.run-notes li:last-child{border:0}
+.run-notes li::before{content:"◆";position:absolute;left:0;color:var(--amber-dim);font-size:10px;top:11px}
+
+/* ============ TAKEAWAY ============ */
+.take{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.take .col{border-radius:4px;padding:30px}
+.take .keep{background:linear-gradient(180deg,rgba(233,180,76,.09),rgba(233,180,76,.02));border:1px solid #8a6728aa}
+.take .warn{background:linear-gradient(180deg,rgba(229,72,77,.07),rgba(229,72,77,.02));border:1px solid #5e2a2eaa}
+.take h3{display:flex;align-items:center;gap:10px}
+.take .keep h3{color:var(--amber-soft)}
+.take .warn h3{color:#f1a8aa}
+.take ul{list-style:none;font-size:14px;color:#c3cbd9}
+.take li{padding:9px 0 9px 22px;position:relative;border-bottom:1px dashed var(--line-solid)}
+.take li:last-child{border-bottom:0}
+.take .keep li::before{content:"+";position:absolute;left:2px;color:var(--amber);font-family:var(--mono)}
+.take .warn li::before{content:"!";position:absolute;left:3px;color:var(--up);font-family:var(--mono);font-weight:700}
+
+footer{padding:60px 0 80px;color:var(--muted-2);font-size:12.5px}
+footer .fline{display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;font-family:var(--mono)}
+footer a{color:var(--muted);text-decoration:none;border-bottom:1px solid var(--line-solid)}
+
+@media(max-width:820px){
+  .formula-row,.duo,.run-grid,.take{grid-template-columns:1fr}
+  .router-flow{grid-template-columns:1fr}
+  .train-flow{grid-template-columns:1fr}
+  .train-mid{transform:rotate(90deg);height:40px}
+  .arch-row{grid-template-columns:1fr}
+  .arch-vline{margin-left:20px}
+}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker rv">Qlib · 市场状态路由案例精读</div>
+    <h1 class="rv">当一个模型不够用：<br><span class="accent">TRA 时序路由适配器</span> 深度拆解</h1>
+    <p class="lede rv">
+      你在前两轮提出的设想——<strong>「主升 / 震荡 / 阴跌，不同状态映射不同模型」</strong>——
+      在 Qlib 官方模型库里恰好有一个论文级（KDD 2021）的实现：<strong>TRA（Temporal Routing Adaptor）</strong>。
+      本页先讲清标签为什么跳过一天，再逐层拆透 TRA 的结构、训练与配置。
+    </p>
+    <div class="meta-row rv">
+      <span class="chip">源码 <b>qlib/contrib/model/pytorch_tra.py</b></span>
+      <span class="chip">配置 <b>examples/benchmarks/TRA/</b></span>
+      <span class="chip">数据集 <b>Alpha158 · CSI300</b></span>
+      <span class="chip">状态数 <b>K = 3</b></span>
+    </div>
+    <nav class="hero-toc rv">
+      <a class="toc-item" href="#s1"><span class="n">01</span>Label 为什么跳过 t 日</a>
+      <a class="toc-item" href="#s2"><span class="n">02</span>TRA 要解决什么</a>
+      <a class="toc-item" href="#s3"><span class="n">03</span>架构总览</a>
+      <a class="toc-item" href="#s4"><span class="n">04</span>三大核心机制</a>
+      <a class="toc-item" href="#s5"><span class="n">05</span>训练流程与参数</a>
+      <a class="toc-item" href="#s6"><span class="n">06</span>官方配置走读</a>
+      <a class="toc-item" href="#s7"><span class="n">07</span>如何运行</a>
+      <a class="toc-item" href="#s8"><span class="n">08</span>启发与局限</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ============ 01 LABEL ============ -->
+<section id="s1">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="sec-num">01</span><h2>Label 为什么不是「t 日收盘 → t+1 收盘」</h2></div>
+    <p class="sec-sub rv">Qlib Alpha158 的默认标签是 <code class="il">Ref($close,-2)/Ref($close,-1)-1</code>，即 <strong class="hl">t+1 收盘 → t+2 收盘</strong> 的收益。这不是随意的写法，而是由「信号何时可得」和「订单何时成交」两件事共同决定的。</p>
+
+    <div class="timeline-card rv">
+      <div class="tl-grid">
+        <div class="tl-day hot">
+          <div class="tl-dot"></div>
+          <div class="tl-tag">DAY t · 信号日</div>
+          <div class="tl-title">收盘后计算特征</div>
+          <div class="tl-desc">模型用到的全部信息只到 t 日收盘。打分、选股、生成调仓订单，最早也发生在 t 日收盘之后。</div>
+        </div>
+        <div class="tl-day hot">
+          <div class="tl-dot"></div>
+          <div class="tl-tag">DAY t+1 · 成交日</div>
+          <div class="tl-title">按下一日价格建仓</div>
+          <div class="tl-desc">Qlib 默认以 t+1 日的成交价（配置中 deal_price: close）完成买入。这是你真正承担盈亏的起点。</div>
+        </div>
+        <div class="tl-day sell">
+          <div class="tl-dot"></div>
+          <div class="tl-tag">DAY t+2 · 估值日</div>
+          <div class="tl-title">首日持有收益兑现</div>
+          <div class="tl-desc">持仓从 t+1 收盘到 t+2 收盘的涨跌，才是这次预测真正能赚到的钱。</div>
+        </div>
+      </div>
+
+      <div class="tl-arrow">
+        <span class="seg fake">close<sub>t</sub> → close<sub>t+1</sub></span>
+        <span class="x">✕ 你赚不到这段</span>
+        <span class="seg real">close<sub>t+1</sub> → close<sub>t+2</sub></span>
+        <span style="color:var(--down);font-family:var(--mono)">✓ LABEL0</span>
+      </div>
+
+      <div class="formula-row">
+        <div class="formula bad">
+          <div class="flag">错误直觉</div>
+          <div class="fexpr">Ref($close,-1)/$close - 1</div>
+          <div class="fdesc">t 收盘 → t+1 收盘。信号在 t 收盘后才生成，你无法以 t 收盘价成交；A 股 T+1 制度下当日买入也不能当日卖出。让模型拟合一段<strong style="color:#f1a8aa">物理上不可获得的收益</strong>，等于训练目标里混入了拿不到的价格，IC 会虚高、实盘必然打折。</div>
+        </div>
+        <div class="formula good">
+          <div class="flag">Qlib 默认</div>
+          <div class="fexpr">Ref($close,-2)/Ref($close,-1) - 1</div>
+          <div class="fdesc">t+1 收盘 → t+2 收盘。Ref 的负索引表示未来日期：在 t 日，-1 指向 t+1，-2 指向 t+2。标签起点与回测引擎的真实建仓价对齐，<strong style="color:var(--amber-soft)">预测目标 = 实际持仓 P&amp;L</strong>。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="reason-list">
+      <div class="reason rv">
+        <div class="rn">REASON 1</div>
+        <h4>收盘价不可成交</h4>
+        <p>收盘价是一个瞬时快照，而特征值本身依赖该收盘价计算。算完再下单，价格已经过去了——这是最常见的一类「未来函数」。</p>
+      </div>
+      <div class="reason rv">
+        <div class="rn">REASON 2</div>
+        <h4>与回测撮合严格对齐</h4>
+        <p>Qlib 回测中 t 日信号产生的订单在 t+1 日成交（本配置 deal_price=close）。标签从成交时刻之后开始计收益，回测与训练目标一致。</p>
+      </div>
+      <div class="reason rv">
+        <div class="rn">REASON 3</div>
+        <h4>标签随执行假设而变</h4>
+        <p>若你的实盘改在 t+1 开盘价或 VWAP 成交，标签起点也应相应换成那个价格。原则只有一条：<strong style="color:var(--amber-soft)">标签 = 真实成交价之后的收益</strong>。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 02 PROBLEM ============ -->
+<section id="s2">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="sec-num">02</span><h2>TRA 要解决的问题：收益分布是「多峰」的</h2></div>
+    <p class="sec-sub rv">论文《Learning Multiple Stock Trading Patterns with Temporal Routing Adaptor》（KDD 2021）的实证发现：股票在不同市场状态下服从<strong class="hl">不同的收益生成模式</strong>，横截面收益分布是多峰的。用单一预测器对多峰分布做回归，结果会被拉向各峰之间的「均值地带」——预测值整体收缩、区分度下降。</p>
+
+    <div class="duo">
+      <div class="panel rv">
+        <h3>单一预测器 <span class="tag old">SINGLE MODEL</span></h3>
+        <svg viewBox="0 0 320 140" aria-hidden="true">
+          <line x1="20" y1="120" x2="300" y2="120" stroke="#28344f" stroke-width="1.5"/>
+          <line x1="20" y1="20" x2="20" y2="120" stroke="#28344f" stroke-width="1.5"/>
+          <path d="M30,118 C70,116 80,70 120,62 C150,56 160,96 200,70 C240,44 260,60 292,58" fill="none" stroke="#6db8d8" stroke-width="2.2"/>
+          <circle cx="160" cy="84" r="4" fill="#e5484d"/>
+          <text x="170" y="80" fill="#f1a8aa" font-size="11" font-family="monospace">预测被拉向中间，丧失区分度</text>
+          <text x="120" y="134" fill="#627089" font-size="10" font-family="monospace">收益 →（多峰混合分布）</text>
+        </svg>
+        <ul>
+          <li>一套参数同时拟合主升 / 震荡 / 阴跌三种模式</li>
+          <li>回归到条件期望的加权平均，打分聚集、IC 受限</li>
+          <li>模式切换时模型表现漂移，正是你观察到的现象</li>
+        </ul>
+      </div>
+      <div class="panel rv">
+        <h3>K 个专家 + 路由器 <span class="tag tra">TRA · K=3</span></h3>
+        <svg viewBox="0 0 320 140" aria-hidden="true">
+          <line x1="20" y1="120" x2="300" y2="120" stroke="#28344f" stroke-width="1.5"/>
+          <path d="M30,118 C55,116 60,60 82,52 C100,46 108,110 118,118" fill="none" stroke="#e5484d" stroke-width="2"/>
+          <path d="M120,118 C145,116 150,38 170,32 C190,38 195,116 218,118" fill="none" stroke="#e9b44c" stroke-width="2"/>
+          <path d="M222,118 C245,114 252,64 272,56 C286,52 292,108 296,118" fill="none" stroke="#2fbf71" stroke-width="2"/>
+          <text x="60" y="44" fill="#f1a8aa" font-size="10" font-family="monospace">专家1</text>
+          <text x="150" y="24" fill="#f3cf85" font-size="10" font-family="monospace">专家2</text>
+          <text x="252" y="48" fill="#7ee2ad" font-size="10" font-family="monospace">专家3</text>
+          <text x="110" y="134" fill="#627089" font-size="10" font-family="monospace">每个专家拟合一个模式（峰）</text>
+        </svg>
+        <ul>
+          <li>路由器根据<strong style="color:var(--amber-soft)">当下时序信息</strong>输出状态概率 π</li>
+          <li>每个样本只激活（软加权）对应的专家预测器</li>
+          <li>最终预测为专家输出的概率加权，天然软切换</li>
+        </ul>
+      </div>
+    </div>
+    <p class="paper-ref rv">论文：Q. Xu et al., "Learning Multiple Stock Trading Patterns with Temporal Routing Adaptor", KDD 2021</p>
+  </div>
+</section>
+
+<!-- ============ 03 ARCHITECTURE ============ -->
+<section id="s3">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="sec-num">03</span><h2>架构总览：一个骨干、三个专家、一个路由器</h2></div>
+    <p class="sec-sub rv">TRA 不替换你的模型，而是「架」在一个时序骨干（默认两层 LSTM + Attention）之上。下面的数据流对应官方配置 <code class="il">model_type: RNN</code>。</p>
+
+    <div class="arch rv">
+      <div class="arch-inner">
+        <div class="arch-row">
+          <div class="arch-label">INPUT · MTSDatasetH</div>
+          <div class="arch-node input">
+            <div class="nt">60 个交易日 × 20 个 Alpha158 精选特征</div>
+            <div class="nd">seq_len=60；FilterCol 从 158 维中选 20 维（RESI5 / WVMA5 / ROC60 …）；RobustZScoreNorm + Fillna</div>
+          </div>
+        </div>
+        <div class="arch-vline"></div>
+        <div class="arch-row">
+          <div class="arch-label">BACKBONE</div>
+          <div class="arch-node base">
+            <div class="nt">Base Model：2 层 LSTM（hidden=64）+ Attention</div>
+            <div class="nd">产出每个样本的时序隐状态 h<sub>t</sub>；该骨干先独立预训练，再与 TRA 联合微调</div>
+          </div>
+        </div>
+        <div class="arch-vline"></div>
+
+        <div class="router-flow">
+          <div>
+            <div class="arch-label" style="margin-bottom:10px">PREDICTORS · 专家预测器</div>
+            <div class="expert-row">
+              <div class="expert"><div class="ek">PREDICTOR 1</div><div class="en">专家网络</div><div class="ed">隐式状态①的 ŷ₁</div></div>
+              <div class="expert"><div class="ek">PREDICTOR 2</div><div class="en">专家网络</div><div class="ed">隐式状态②的 ŷ₂</div></div>
+              <div class="expert"><div class="ek">PREDICTOR 3</div><div class="en">专家网络</div><div class="ed">隐式状态③的 ŷ₃</div></div>
+            </div>
+          </div>
+          <div class="wire-label">
+            h<sub>t</sub> 同时送入<br>↓<br>
+            <span style="color:var(--amber)">路由概率 π</span> 加权
+          </div>
+          <div>
+            <div class="arch-label" style="margin-bottom:10px">ROUTER · 状态路由器</div>
+            <div class="router-box">
+              <div class="rt">ROUTER</div>
+              <div class="rprob">softmax(<span>π₁</span>, <span>π₂</span>, <span>π₃</span>)</div>
+              <div class="wire-label" style="margin-top:10px">输入 src_info = LR + TPE<br>Gumbel-Softmax 可微采样</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arch-vline"></div>
+        <div class="final-pred">ŷ<sub>t</sub> = π₁·ŷ₁ + π₂·ŷ₂ + π₃·ŷ₃&nbsp;&nbsp;&nbsp;—— 概率软融合，不是 if/else 硬切换</div>
+      </div>
+    </div>
+
+    <div class="arch-legend rv">
+      <span><i style="background:var(--cyan)"></i>数据输入</span>
+      <span><i style="background:var(--violet)"></i>共享骨干</span>
+      <span><i style="background:var(--amber)"></i>TRA 新增组件</span>
+      <span style="margin-left:auto;color:var(--muted-2)">注意：三个状态是模型<strong style="color:var(--paper)">隐式学出来的</strong>，不对应人工标注的「主升/震荡/阴跌」</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 MECHANISMS ============ -->
+<section id="s4">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="sec-num">04</span><h2>三个让它真正 work 的机制</h2></div>
+    <p class="sec-sub rv">思路并不新鲜（Mixture of Experts 是老概念），TRA 的贡献在于回答了两个难题：<strong class="hl">路由器的输入从哪来</strong>、<strong>路由器的训练标签从哪来</strong>。</p>
+
+    <div class="mech-grid">
+      <div class="mech rv">
+        <span class="mn">01</span>
+        <h3>Gumbel-Softmax 软路由</h3>
+        <p>路由器不是输出离散的「去哪个专家」的硬选择，而是通过 Gumbel-Softmax 输出可微的概率权重。训练时可梯度反传，推理时自然得到加权融合——避免了硬切换在状态边界的来回打脸。</p>
+        <div class="math">π = softmax((log α + g) / <b>τ</b>)　g ~ Gumbel(0,1)</div>
+        <p style="margin-top:12px">配置中 <code class="il">tau: 1.0</code> 即温度 τ：越低越接近硬选择，越高越平滑。</p>
+      </div>
+
+      <div class="mech rv">
+        <span class="mn">02</span>
+        <h3>路由信息 LR + TPE</h3>
+        <p>路由器不看全部特征，只接收两类轻量但强状态指示性的信号（<code class="il">src_info: LR_TPE</code>）：</p>
+        <p style="margin-top:8px"><strong style="color:var(--amber-soft)">LR</strong>（Last Return）：最近一期收益，刻画当下动能方向；<br>
+        <strong style="color:var(--amber-soft)">TPE</strong>（Trend Prediction Error）：近期预测误差趋势——当前哪个专家持续预测不准，说明当下不属于它的状态。</p>
+        <div class="math">s<sub>t</sub> = [ <b>r<sub>t-1</sub></b> , <b>TPE<sub>t</sub></b> ] → Router → π</div>
+      </div>
+
+      <div class="mech rv">
+        <span class="mn">03</span>
+        <h3>最优传输构造路由标签</h3>
+        <p>路由器自己也需要监督信号，但「此刻属于哪个状态」无人知道。TRA 用<strong style="color:var(--amber-soft)">最优传输（Sinkhorn-Knopp）</strong>把历史样本按预测误差最小 + 负载均衡的原则分配给各专家，再以分配结果作为路由器的训练目标，并用 EMA（<code class="il">rho: 0.99</code>）在线更新专家统计量。</p>
+        <div class="math">min <b>Σ cost(样本,专家)</b>　s.t. 每个专家分到的样本量均衡</div>
+        <p style="margin-top:12px">这保证三个专家不会塌缩成「一个专家干活、两个闲置」的退化解。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 05 TRAINING ============ -->
+<section id="s5">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="sec-num">05</span><h2>两阶段训练：先有骨干，再学路由</h2></div>
+    <p class="sec-sub rv">配置中 <code class="il">pretrain: True</code>。如果三个专家和路由器从随机初始化一起训练，早期预测误差是噪声，最优传输会把样本乱分，路由永远学不出来。</p>
+
+    <div class="train-flow rv">
+      <div class="train-step">
+        <h3><span class="step-n">1</span>预训练骨干</h3>
+        <ul>
+          <li>先用全部样本训练 Base LSTM + Attention 直接预测 LABEL0</li>
+          <li>得到有意义的隐状态 h<sub>t</sub> 和合理的初始预测能力</li>
+          <li>对应配置 pretrain=True 的第一阶段</li>
+        </ul>
+      </div>
+      <div class="train-mid">→</div>
+      <div class="train-step">
+        <h3><span class="step-n">2</span>联合训练 TRA</h3>
+        <ul>
+          <li>挂接 3 个专家预测器与路由器，在骨干之上联合微调</li>
+          <li>主损失：加权预测误差；辅助损失：路由/最优传输损失</li>
+          <li>early_stop=20，验证集 20 轮无提升即停，最多 100 轮</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 class="rv" style="margin-bottom:18px">关键超参数（均来自官方 Alpha158 配置）</h3>
+    <div class="rv" style="overflow-x:auto;border:1px solid var(--line-solid);border-radius:4px">
+    <table class="params">
+      <thead><tr><th>参数</th><th>值</th><th>作用</th></tr></thead>
+      <tbody>
+        <tr><td>num_states</td><td><code>3</code></td><td>专家数 K，即隐式市场状态数</td></tr>
+        <tr><td>tau</td><td><code>1.0</code></td><td>Gumbel-Softmax 温度，控制路由软硬程度</td></tr>
+        <tr><td>src_info</td><td><code>LR_TPE</code></td><td>路由器的信息源：最近收益 + 趋势预测误差</td></tr>
+        <tr><td>transport_method</td><td><code>router</code></td><td>用最优传输为路由器生成训练目标</td></tr>
+        <tr><td>memory_mode</td><td><code>sample</code></td><td>以历史样本记忆池形式维护路由统计（MTSDatasetH 同步使用）</td></tr>
+        <tr><td>lamb (λ)</td><td><code>1.0</code></td><td>路由辅助损失相对主预测损失的权重</td></tr>
+        <tr><td>rho (ρ)</td><td><code>0.99</code></td><td>专家统计量指数滑动平均的衰减系数</td></tr>
+        <tr><td>alpha (α)</td><td><code>0.5</code></td><td>路由信息/传输目标中两项的权衡系数</td></tr>
+        <tr><td>pretrain</td><td><code>True</code></td><td>先预训练骨干再联合训练</td></tr>
+        <tr><td>freeze_model / freeze_predictors</td><td><code>False / False</code></td><td>联合阶段骨干与专家均参与更新</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 06 CONFIG ============ -->
+<section id="s6">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="sec-num">06</span><h2>官方配置走读</h2></div>
+    <p class="sec-sub rv">文件：<code class="il">examples/benchmarks/TRA/workflow_config_tra_Alpha158.yaml</code>。点击标签切换三个片段，高亮行是与普通 LSTM 配置的差异点。</p>
+
+    <div class="code-shell rv">
+      <div class="code-bar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="fname">workflow_config_tra_Alpha158.yaml</span>
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="t0">数据与标签</button>
+          <button class="tab-btn" data-tab="t1">TRA 模型</button>
+          <button class="tab-btn" data-tab="t2">数据集 / 回测</button>
+        </div>
+      </div>
+
+<pre class="code active" id="t0"><span class="c"># 20 个精选特征 + 时序稳健标准化（注意：这里没有 CS 截面处理器作用于特征）</span>
+data_handler_config:
+  start_time: 2008-01-01
+  end_time: 2020-08-01
+  fit_start_time: 2008-01-01   <span class="c"># 处理器统计量只在训练段拟合</span>
+  fit_end_time: 2014-12-31
+  instruments: csi300
+  infer_processors:
+    - class: FilterCol          <span class="c"># 158 维 → 20 维</span>
+      kwargs:
+        col_list: ["RESI5","WVMA5","RSQR5","KLEN","RSQR10",
+                   "CORR5","CORD5","ROC60", ... 共20个]
+    - class: RobustZScoreNorm   <span class="c"># 时序方向：逐股票用 fit 段中位数/MAD</span>
+      kwargs: {fields_group: feature, clip_outlier: true}
+    - class: Fillna
+      kwargs: {fields_group: feature}
+<span class="hl-line">  learn_processors:</span>
+<span class="hl-line">    - class: CSRankNorm          <span class="c"># 标签做截面排名：学"明天排第几"而非涨幅数值</span></span>
+<span class="hl-line">      kwargs: {fields_group: label}</span>
+<span class="hl-line">  label: ["Ref($close, -2) / Ref($close, -1) - 1"]  <span class="c"># t+1收盘→t+2收盘</span></span></pre>
+
+<pre class="code" id="t1"><span class="hl-line">num_states: &num_states 3        <span class="c"># 三个隐式状态 / 三个专家</span></span>
+memory_mode: &memory_mode sample
+
+tra_config:
+  num_states: *num_states
+  rnn_arch: LSTM
+  hidden_size: 32               <span class="c"># 路由器内部 RNN</span>
+  num_layers: 1
+  dropout: 0.0
+  tau: 1.0                      <span class="c"># Gumbel-Softmax 温度</span>
+  src_info: LR_TPE              <span class="c"># 路由信息：最近收益 + 预测误差趋势</span>
+
+model_config:
+  input_size: 20
+  hidden_size: 64               <span class="c"># 骨干 LSTM hidden=64, 2层 + Attention</span>
+  num_layers: 2
+  rnn_arch: LSTM
+  use_attn: True
+
+task:
+  model:
+    class: TRAModel
+    module_path: qlib.contrib.model.pytorch_tra
+    kwargs:
+      tra_config: *tra_config
+      model_config: *model_config
+      model_type: RNN
+      lr: 1.0e-3
+      n_epochs: 100
+      early_stop: 20
+<span class="hl-line">      lamb: 1.0                  <span class="c"># 路由损失权重</span></span>
+<span class="hl-line">      rho: 0.99                 <span class="c"># 统计量 EMA 衰减</span></span>
+<span class="hl-line">      alpha: 0.5                <span class="c"># LR/TPE 权衡</span></span>
+<span class="hl-line">      transport_method: router  <span class="c"># 最优传输生成路由标签</span></span>
+<span class="hl-line">      pretrain: True            <span class="c"># 两阶段训练开关</span></span>
+      seed: 0</pre>
+
+<pre class="code" id="t2">task:
+  dataset:
+    class: MTSDatasetH           <span class="c"># TRA 专用：构造60日序列 + 路由记忆样本</span>
+    module_path: qlib.contrib.data.dataset
+    kwargs:
+      handler: {class: Alpha158, module_path: qlib.contrib.data.handler}
+      segments:
+        train: [2008-01-01, 2014-12-31]
+        valid: [2015-01-01, 2016-12-31]
+        test:  [2017-01-01, 2020-08-01]
+      seq_len: 60
+      num_states: *num_states
+      batch_size: 1024
+      memory_mode: *memory_mode
+      drop_last: True
+  record:
+    - SignalRecord        <span class="c"># 保存预测值</span>
+    - SigAnaRecord        <span class="c"># IC / Rank IC / 多空收益</span>
+    - PortAnaRecord       <span class="c"># 组合回测与风险分析</span>
+
+<span class="c"># 下游用法与其它模型完全一致——TRA 只替换"打分器"，策略层不变</span>
+port_analysis_config:
+  strategy:
+    class: TopkDropoutStrategy
+    kwargs: {topk: 50, n_drop: 5}
+  backtest:
+    benchmark: SH000300
+    exchange_kwargs:
+      deal_price: close           <span class="c"># t日信号 → t+1收盘价成交，与标签起点对齐</span>
+      open_cost: 0.0005
+      close_cost: 0.0015
+      limit_threshold: 0.095      <span class="c"># 涨跌停不可成交</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 07 RUN ============ -->
+<section id="s7">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="sec-num">07</span><h2>如何运行与产物</h2></div>
+    <div class="run-grid rv">
+      <div class="terminal">
+<span class="comment" style="color:#5a6783"># 1. 准备 A 股日频数据（只需一次）</span>
+<span class="prompt">$</span> <span class="cmd">python scripts/get_data.py qlib_data \</span>
+      <span class="out">--target_dir ~/.qlib/qlib_data/cn_data --region cn</span>
+
+<span style="color:#5a6783"># 2. Alpha158 精选20特征版本（轻量，先跑这个）</span>
+<span class="prompt">$</span> <span class="cmd">qrun examples/benchmarks/TRA/workflow_config_tra_Alpha158.yaml</span>
+
+<span style="color:#5a6783"># 3. 全量158特征版本 / Alpha360 序列版本</span>
+<span class="prompt">$</span> <span class="cmd">qrun examples/benchmarks/TRA/workflow_config_tra_Alpha158_full.yaml</span>
+<span class="prompt">$</span> <span class="cmd">qrun examples/benchmarks/TRA/workflow_config_tra_Alpha360.yaml</span>
+
+<span class="out"># 产物：MLflow 记录配置/模型/IC 报告，</span>
+<span class="out"># output/Alpha158 下保存 checkpoint 与预测结果</span>
+      </div>
+      <div class="run-notes">
+        <h4>实验要点</h4>
+        <ul>
+          <li>同目录另有 Alpha360 配置，特征是过去 60 日 OHLCV 原始序列，适合纯时序模型</li>
+          <li>结果指标看 IC、Rank IC、ICIR 与 TopkDropout 回测收益，基准表在 examples/benchmarks/README.md，TRA 长期居前列</li>
+          <li>务必固定 seed 多跑几次（官方基准表为 20 个随机种子的均值±标准差），深度学习结果方差不小</li>
+          <li>对比基线至少包括：LightGBM + Alpha158、普通 ALSTM——增量必须来自路由机制而非更大网络</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 08 TAKEAWAY ============ -->
+<section id="s8">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="sec-num">08</span><h2>对你的项目：该借什么，别照搬什么</h2></div>
+    <p class="sec-sub rv">TRA 证明了「状态条件化 + 软融合」这条路线成立，而且它是端到端学出来的。但研究模型与生产系统的取舍不同。</p>
+    <div class="take">
+      <div class="col keep rv">
+        <h3>值得吸收的设计</h3>
+        <ul>
+          <li><strong>软融合而非硬切换</strong>：最终输出是概率加权，状态边界的误判不会造成离散跳变</li>
+          <li><strong>用「预测误差」感知状态</strong>：TPE 思路可以直接外置——跟踪各模型近期 IC/误差决定融合权重，不必训练神经网络</li>
+          <li><strong>负载均衡约束</strong>：无论软融合还是外置专家，都要防止权重长期塌缩到一个模型上</li>
+          <li><strong>状态隐式学习</strong>：不必执着于人工命名「主升/震荡/阴跌」，让数据切分往往更稳</li>
+          <li><strong>先骨干后路由</strong>：任何条件化层都应架在一个本身合格的基线上方</li>
+        </ul>
+      </div>
+      <div class="col warn rv">
+        <h3>生产化要警惕的点</h3>
+        <ul>
+          <li>深度模型 + 三专家参数多、样本效率低，A 股有效日频样本有限，过拟合风险高于 LGBM 基线</li>
+          <li>隐式状态不可解释，风控/合规场景下「为什么今天降仓」难以归因</li>
+          <li>最优传输、Gumbel 采样带来训练不稳定性，对种子、tau、lr 敏感</li>
+          <li>建议路线：先做「LGBM 单模型 + 显式状态特征」与「状态概率→仓位乘子」，把 TRA 当对照实验，确认隐式路由有稳定增量后再考虑上线</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="fline">
+      <span>QLIB · TRA DEEP DIVE — 基于 microsoft/qlib 官方配置与 KDD 2021 论文整理</span>
+      <span><a href="https://github.com/microsoft/qlib/tree/main/examples/benchmarks/TRA">github.com/microsoft/qlib · examples/benchmarks/TRA</a></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// scroll reveal
+const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.12});
+document.querySelectorAll('.rv').forEach(el=>io.observe(el));
+// tabs
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('pre.code').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
