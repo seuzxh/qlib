@@ -66,3 +66,4 @@ examples/hyperparameter/LightGBM/db*.sqlite3
 examples/table_*.md
 examples/catboost_info/
 examples/catboost_records/
+mlp_records/
