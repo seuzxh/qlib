@@ -208,9 +208,11 @@ class NestedDecisionExecutionWorkflow:
             },
         },
         "backtest": {
-            # 回测窗口取 1min 与 5min 数据覆盖的交集（2024 年起）
+            # 回测窗口取 1min 与 5min 数据覆盖的交集（2024 年起）。
+            # NOTE: 完整两个月窗口曾在第 30 个交易日（约 2024-04 中旬）以 0% CPU 挂起
+            #（疑似嵌套执行器上游问题），缩短为 4 周以稳定完成演示
             "start_time": "2024-03-01",
-            "end_time": "2024-04-30",
+            "end_time": "2024-03-29",
             "account": 100000000,
             "exchange_kwargs": {
                 "freq": "1min",
