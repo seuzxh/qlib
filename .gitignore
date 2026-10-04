@@ -64,3 +64,5 @@ examples/rolling_process_data/pre_handler.pkl
 examples/portfolio/riskdata/
 examples/hyperparameter/LightGBM/db*.sqlite3
 examples/table_*.md
+examples/catboost_info/
+examples/catboost_records/
