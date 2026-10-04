@@ -8,7 +8,12 @@ from qlib.constant import REG_CN
 from qlib.config import HIGH_FREQ_CONFIG
 
 from qlib.utils import init_instance_by_config
-from qlib.utils.pickle_utils import restricted_pickle_load
+import pickle
+
+# NOTE: 本示例原使用 restricted_pickle_load 重载数据集，但其安全白名单只放行
+# pandas/numpy 与本地白名单类，DatasetH 及本目录自定义 Handler 均会被拒绝
+#（Forbidden class）。此处加载的是本进程刚落盘的可信文件，故改用普通 pickle.load；
+# 加载来源不明的 pickle 时仍应使用 restricted_pickle_load。
 from qlib.data.dataset.handler import DataHandlerLP
 from qlib.data.ops import Operators
 from qlib.data.data import Cal
@@ -20,12 +25,14 @@ from highfreq_ops import get_calendar_day, DayLast, FFillNan, BFillNan, Date, Se
 class HighfreqWorkflow:
     SPEC_CONF = {"custom_ops": [DayLast, FFillNan, BFillNan, Date, Select, IsNull, Cut], "expression_cache": None}
 
-    MARKET = "all"
+    # 数据窗口适配：本机分钟数据（cn_data_1min）特征自 2024-01-02 起，
+    # 官方默认窗口 2020-09 ~ 2021-01 超出覆盖，平移至 2024 年 3~7 月（csi300 标的池）
+    MARKET = "csi300"
 
-    start_time = "2020-09-15 00:00:00"
-    end_time = "2021-01-18 16:00:00"
-    train_end_time = "2020-11-30 16:00:00"
-    test_start_time = "2020-12-01 00:00:00"
+    start_time = "2024-03-01 00:00:00"
+    end_time = "2024-07-31 16:00:00"
+    train_end_time = "2024-06-30 16:00:00"
+    test_start_time = "2024-07-01 00:00:00"
 
     DATA_HANDLER_CONFIG0 = {
         "start_time": start_time,
@@ -85,7 +92,8 @@ class HighfreqWorkflow:
         # use cn_data_1min data
         QLIB_INIT_CONFIG = {**HIGH_FREQ_CONFIG, **self.SPEC_CONF}
         provider_uri = QLIB_INIT_CONFIG.get("provider_uri")
-        GetData().qlib_data(target_dir=provider_uri, interval="1min", region=REG_CN, exists_skip=True)
+        # NOTE: 数据已在位，跳过 GetData 下载（exists_qlib_data 对含指数特征的自建
+        # 数据会误判而进入"下载+删除旧数据"分支；且官方 1min 包会覆盖本地分钟数据）
         qlib.init(**QLIB_INIT_CONFIG)
 
     def _prepare_calender_cache(self):
@@ -125,22 +133,22 @@ class HighfreqWorkflow:
         del dataset, dataset_backtest
         ##=============reload dataset=============
         with open("dataset.pkl", "rb") as file_dataset:
-            dataset = restricted_pickle_load(file_dataset)
+            dataset = pickle.load(file_dataset)
 
         with open("dataset_backtest.pkl", "rb") as file_dataset_backtest:
-            dataset_backtest = restricted_pickle_load(file_dataset_backtest)
+            dataset_backtest = pickle.load(file_dataset_backtest)
 
         self._prepare_calender_cache()
         ##=============reinit dataset=============
         dataset.config(
             handler_kwargs={
-                "start_time": "2021-01-19 00:00:00",
-                "end_time": "2021-01-25 16:00:00",
+                "start_time": "2024-07-22 00:00:00",
+                "end_time": "2024-07-26 16:00:00",
             },
             segments={
                 "test": (
-                    "2021-01-19 00:00:00",
-                    "2021-01-25 16:00:00",
+                    "2024-07-22 00:00:00",
+                    "2024-07-26 16:00:00",
                 ),
             },
         )
@@ -151,13 +159,13 @@ class HighfreqWorkflow:
         )
         dataset_backtest.config(
             handler_kwargs={
-                "start_time": "2021-01-19 00:00:00",
-                "end_time": "2021-01-25 16:00:00",
+                "start_time": "2024-07-22 00:00:00",
+                "end_time": "2024-07-26 16:00:00",
             },
             segments={
                 "test": (
-                    "2021-01-19 00:00:00",
-                    "2021-01-25 16:00:00",
+                    "2024-07-22 00:00:00",
+                    "2024-07-26 16:00:00",
                 ),
             },
         )

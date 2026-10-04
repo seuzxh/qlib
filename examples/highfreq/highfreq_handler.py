@@ -40,7 +40,7 @@ class HighFreqHandler(DataHandlerLP):
         names = []
 
         template_if = "If(IsNull({1}), {0}, {1})"
-        template_paused = "Select(Or(IsNull($paused), Eq($paused, 0.0)), {0})"
+        template_paused = "{0}"  # NOTE: 本机数据无 $paused 字段，原 Select(Or(IsNull($paused), Eq($paused, 0.0)), {0}) 改为直通
         template_fillnan = "BFillNan(FFillNan({0}))"
         # Because there is no vwap field in the yahoo data, a method similar to Simpson integration is used to approximate vwap
         simpson_vwap = "($open + 2*$high + 2*$low + $close)/6"
@@ -128,7 +128,7 @@ class HighFreqBacktestHandler(DataHandler):
         names = []
 
         template_if = "If(IsNull({1}), {0}, {1})"
-        template_paused = "Select(Or(IsNull($paused), Eq($paused, 0.0)), {0})"
+        template_paused = "{0}"  # NOTE: 本机数据无 $paused 字段，原 Select(Or(IsNull($paused), Eq($paused, 0.0)), {0}) 改为直通
         template_fillnan = "BFillNan(FFillNan({0}))"
         # Because there is no vwap field in the yahoo data, a method similar to Simpson integration is used to approximate vwap
         simpson_vwap = "($open + 2*$high + 2*$low + $close)/6"

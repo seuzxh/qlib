@@ -14,14 +14,18 @@ from qlib.tests.data import GetData
 
 class RollingDataWorkflow:
     MARKET = "csi300"
-    start_time = "2010-01-01"
-    end_time = "2019-12-31"
-    rolling_cnt = 5
+    # 数据窗口适配：本机日线数据 2020-01-02 ~ 2026-09-30
+    #（滚动单位为 1 年：train 3 年 + valid 1 年 + test 1 年，共 3 轮；
+    #  第 3 轮 test 段 2026 年只覆盖到 9 月末）
+    start_time = "2020-01-01"
+    end_time = "2026-12-31"
+    rolling_cnt = 3
 
     def _init_qlib(self):
         """initialize qlib"""
         provider_uri = "~/.qlib/qlib_data/cn_data"  # target_dir
-        GetData().qlib_data(target_dir=provider_uri, region=REG_CN, exists_skip=True)
+        # NOTE: 数据已在位，跳过 GetData（exists_qlib_data 对自建数据会误判，
+        # 详见 examples/workflow_by_code.py 同款注释）
         qlib.init(provider_uri=provider_uri, region=REG_CN)
 
     def _dump_pre_handler(self, path):
@@ -41,8 +45,12 @@ class RollingDataWorkflow:
         pre_handler.to_pickle(path)
 
     def _load_pre_handler(self, path):
+        # NOTE: 原用 restricted_pickle_load，但安全白名单不放行 qlib 自身的 Alpha158
+        #（Forbidden class）。此处加载的是本进程刚落盘的可信文件，改用普通 pickle.load
+        import pickle as _pkl
+
         with open(path, "rb") as file_dataset:
-            pre_handler = restricted_pickle_load(file_dataset)
+            pre_handler = _pkl.load(file_dataset)
         return pre_handler
 
     def rolling_process(self):
@@ -50,12 +58,12 @@ class RollingDataWorkflow:
         self._dump_pre_handler("pre_handler.pkl")
         pre_handler = self._load_pre_handler("pre_handler.pkl")
 
-        train_start_time = (2010, 1, 1)
-        train_end_time = (2012, 12, 31)
-        valid_start_time = (2013, 1, 1)
-        valid_end_time = (2013, 12, 31)
-        test_start_time = (2014, 1, 1)
-        test_end_time = (2014, 12, 31)
+        train_start_time = (2020, 1, 1)
+        train_end_time = (2022, 12, 31)
+        valid_start_time = (2023, 1, 1)
+        valid_end_time = (2023, 12, 31)
+        test_start_time = (2024, 1, 1)
+        test_end_time = (2024, 12, 31)
 
         dataset_config = {
             "class": "DatasetH",
