@@ -47,7 +47,9 @@ if __name__ == "__main__":
 
     # save new task
     with new_task_path.open("w") as f:
-        yaml.safe_dump(new_task_config, f, indent=4, sort_keys=False)
+        # NOTE: ruamel.yaml 0.18 的 YAML 实例无 safe_dump 方法，且 dump 不再收
+        # indent/sort_keys 参数（这些参数移到了 YAML() 构造器），故直接 dump
+        yaml.dump(new_task_config, f)
 
     # 4) train model with new task
     with TimeInspector.logt("The time for task with handler cache:"):

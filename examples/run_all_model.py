@@ -67,7 +67,9 @@ def create_env():
     temp_dir = tempfile.mkdtemp()
     env_path = Path(temp_dir).absolute()
     sys.stderr.write(f"Creating Virtual Environment with path: {env_path}...\n")
-    execute(f"conda create --prefix {env_path} python=3.7 -y")
+    # 本仓库 pyproject.toml 要求 Python >= 3.8，原 python=3.7 会导致 pip 安装 pyqlib 时
+    # 报 "requires a different Python" 而失败，故改为 3.8
+    execute(f"conda create --prefix {env_path} python=3.8 -y")
     python_path = env_path / "bin" / "python"  # TODO: FIX ME!
     sys.stderr.write("\n")
     # get anaconda activate path
@@ -208,7 +210,9 @@ def gen_yaml_file_without_seed_kwargs(yaml_path, temp_dir):
 class ModelRunner:
     def _init_qlib(self, exp_folder_name):
         # init qlib
-        GetData().qlib_data(exists_skip=True)
+        # NOTE: 原版此处调用 GetData().qlib_data(exists_skip=True)。
+        # 本机自建数据含指数特征（不在 instruments/all.txt 中），exists_qlib_data
+        # 会误判"数据不存在"而走下载+删除(delete_old=True)分支。数据已在位，直接初始化。
         qlib.init(
             exp_manager={
                 "class": "MLflowExpManager",

@@ -1,3 +1,5 @@
+# NOTE: xgboost==1.2.1 与 pip 安装 qlib 时升级到的 pandas>=2 不兼容
+#（Int64Index 已在 pandas 2.0 移除），故放宽为不钉版本
 numpy==1.21.0
 pandas==1.1.2
-xgboost==1.2.1
+xgboost

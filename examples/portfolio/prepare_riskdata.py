@@ -8,7 +8,7 @@ from qlib.data import D
 from qlib.model.riskmodel import StructuredCovEstimator
 
 
-def prepare_data(riskdata_root="./riskdata", T=240, start_time="2016-01-01"):
+def prepare_data(riskdata_root="./riskdata", T=240, start_time="2020-01-02", skip_before="2025-01-01"):
     universe = D.features(D.instruments("csi300"), ["$close"], start_time=start_time).swaplevel().sort_index()
 
     price_all = (
@@ -21,6 +21,15 @@ def prepare_data(riskdata_root="./riskdata", T=240, start_time="2016-01-01"):
     for i in range(T - 1, len(price_all)):
         date = price_all.index[i]
         ref_date = price_all.index[i - T + 1]
+
+        # NOTE: 仅生成回测窗口（2025-01-01 起）所需的风险数据，跳过更早日期以缩短运行时间；
+        # 如需全历史风险数据，将 skip_before 置 None 即可
+        if skip_before is not None and date < pd.Timestamp(skip_before):
+            continue
+
+        # NOTE: 断点续跑——已生成过该日期的风险数据则跳过（避免重跑覆盖前功）
+        if os.path.exists(f"{riskdata_root}/{date.strftime('%Y%m%d')}/specific_risk.pkl"):
+            continue
 
         print(date)
 

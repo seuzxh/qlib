@@ -112,11 +112,12 @@ from qlib.backtest import collect_data
 class NestedDecisionExecutionWorkflow:
     market = "csi300"
     benchmark = "SH000300"
+    # 数据窗口适配：日线特征 2020-01-02 起；分钟数据（cn_data_1min）2024-01-02 起
     data_handler_config = {
-        "start_time": "2008-01-01",
-        "end_time": "2021-05-31",
-        "fit_start_time": "2008-01-01",
-        "fit_end_time": "2014-12-31",
+        "start_time": "2020-01-02",
+        "end_time": "2024-12-31",
+        "fit_start_time": "2020-01-02",
+        "fit_end_time": "2023-12-31",
         "instruments": market,
     }
 
@@ -146,9 +147,9 @@ class NestedDecisionExecutionWorkflow:
                     "kwargs": data_handler_config,
                 },
                 "segments": {
-                    "train": ("2007-01-01", "2014-12-31"),
-                    "valid": ("2015-01-01", "2016-12-31"),
-                    "test": ("2020-01-01", "2021-05-31"),
+                    "train": ("2020-01-02", "2023-12-31"),
+                    "valid": ("2024-01-01", "2024-06-30"),
+                    "test": ("2024-07-01", "2024-12-31"),
                 },
             },
         },
@@ -166,12 +167,14 @@ class NestedDecisionExecutionWorkflow:
                     "class": "NestedExecutor",
                     "module_path": "qlib.backtest.executor",
                     "kwargs": {
-                        "time_per_step": "30min",
+                        # NOTE: 本机无 30min 特征数据，嵌套层级由 日/30分/5分 改为 日/5分/1分
+                        #（5min 取自 cn_data，1min 取自 cn_data_1min）
+                        "time_per_step": "5min",
                         "inner_executor": {
                             "class": "SimulatorExecutor",
                             "module_path": "qlib.backtest.executor",
                             "kwargs": {
-                                "time_per_step": "5min",
+                                "time_per_step": "1min",
                                 "generate_portfolio_metrics": True,
                                 "verbose": True,
                                 "indicator_config": {
@@ -205,8 +208,9 @@ class NestedDecisionExecutionWorkflow:
             },
         },
         "backtest": {
-            "start_time": "2020-09-20",
-            "end_time": "2021-05-20",
+            # 回测窗口取 1min 与 5min 数据覆盖的交集（2024 年起）
+            "start_time": "2024-03-01",
+            "end_time": "2024-04-30",
             "account": 100000000,
             "exchange_kwargs": {
                 "freq": "1min",
@@ -222,12 +226,10 @@ class NestedDecisionExecutionWorkflow:
     def _init_qlib(self):
         """initialize qlib"""
         provider_uri_day = "~/.qlib/qlib_data/cn_data"  # target_dir
-        GetData().qlib_data(target_dir=provider_uri_day, region=REG_CN, version="v2", exists_skip=True)
+        # NOTE: 数据已在位，跳过 GetData（对自建数据会误判并走"下载+删除"分支，见
+        # workflow_by_code.py 注释）；另补 5min 频率映射（cn_data 自带 5min 特征）
         provider_uri_1min = HIGH_FREQ_CONFIG.get("provider_uri")
-        GetData().qlib_data(
-            target_dir=provider_uri_1min, interval="1min", region=REG_CN, version="v2", exists_skip=True
-        )
-        provider_uri_map = {"1min": provider_uri_1min, "day": provider_uri_day}
+        provider_uri_map = {"1min": provider_uri_1min, "5min": provider_uri_day, "day": provider_uri_day}
         qlib.init(provider_uri=provider_uri_map, dataset_cache=None, expression_cache=None)
 
     def _train_model(self, model, dataset):
