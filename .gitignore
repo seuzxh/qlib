@@ -67,3 +67,5 @@ examples/table_*.md
 examples/catboost_info/
 examples/catboost_records/
 mlp_records/
+nn_logs/
+nn_records/

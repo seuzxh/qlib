@@ -286,7 +286,7 @@ class HIST(Model):
 
         if self.model_path is not None:
             self.logger.info("Loading pretrained model...")
-            pretrained_model.load_state_dict(torch.load(self.model_path))
+            pretrained_model.load_state_dict(torch.load(self.model_path, map_location=self.device))
 
         model_dict = self.HIST_model.state_dict()
         pretrained_dict = {
