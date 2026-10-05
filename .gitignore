@@ -75,3 +75,8 @@ examples/orderbook_data/raw_data/
 examples/orderbook_data/data_info/
 examples/orderbook_data/data_finish_info/
 examples/orderbook_data/log_file/
+examples/rl/simple_example_run.ipynb
+examples/online_srv/mlruns/
+examples/model_rolling/mlruns/
+examples/orderbook_data/*.log
+examples/orderbook_data/rl_nb.log

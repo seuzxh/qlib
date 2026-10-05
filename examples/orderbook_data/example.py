@@ -1,7 +1,11 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-from arctic.arctic import Arctic
+try:
+    from arctic.arctic import Arctic
+except ImportError:
+    # NOTE: 查询侧只经 qlib 的 ArcticFeatureProvider 访问 MongoDB，无需安装 arctic 库本身
+    Arctic = None
 import qlib
 from qlib.data import D
 import unittest
@@ -18,7 +22,7 @@ class TestClass(unittest.TestCase):
         """
         Configure for arctic
         """
-        provider_uri = "~/.qlib/qlib_data/yahoo_cn_1min"
+        provider_uri = "~/.qlib/qlib_data/cn_data_1min"  # NOTE: 本机分钟库（原 yahoo_cn_1min）
         qlib.init(
             provider_uri=provider_uri,
             mem_cache_size_limit=1024**3 * 2,

@@ -27,12 +27,12 @@ class OnlineSimulationExample:
         provider_uri="~/.qlib/qlib_data/cn_data",
         region="cn",
         exp_name="rolling_exp",
-        task_url="mongodb://10.0.0.4:27017/",  # not necessary when using TrainerR or DelayTrainerR
+        task_url="mongodb://127.0.0.1:27017",  # NOTE: 原版 10.0.0.4 为官方内网地址，改本机
         task_db_name="rolling_db",  # not necessary when using TrainerR or DelayTrainerR
         task_pool="rolling_task",
         rolling_step=80,
-        start_time="2018-09-10",
-        end_time="2018-10-31",
+        start_time="2024-07-01",
+        end_time="2024-09-30",
         tasks=None,
         trainer="TrainerR",
     ):
@@ -52,7 +52,24 @@ class OnlineSimulationExample:
             tasks (dict or list[dict]): a set of the task config waiting for rolling and training
         """
         if tasks is None:
-            tasks = [CSI100_RECORD_XGBOOST_TASK_CONFIG_ONLINE, CSI100_RECORD_LGB_TASK_CONFIG_ONLINE]
+            # 数据窗口适配：本机日线 2020-01-02 起、csi100 成分过期改 csi300
+            #（官方默认 2018 年窗口 + CSI100）
+            from copy import deepcopy
+
+            tasks = [deepcopy(CSI100_RECORD_XGBOOST_TASK_CONFIG_ONLINE), deepcopy(CSI100_RECORD_LGB_TASK_CONFIG_ONLINE)]
+            for _task in tasks:
+                _task["dataset"]["kwargs"]["segments"] = {
+                    "train": ("2024-01-01", "2024-03-31"),
+                    "valid": ("2024-04-01", "2024-05-31"),
+                    "test": ("2024-06-01", "2024-06-30"),
+                }
+                _task["dataset"]["kwargs"]["handler"]["kwargs"].update({
+                    "start_time": "2024-01-01",
+                    "end_time": "2024-09-30",
+                    "fit_start_time": "2024-01-01",
+                    "fit_end_time": "2024-03-31",
+                    "instruments": "csi300",
+                })
         self.exp_name = exp_name
         self.task_pool = task_pool
         self.start_time = start_time
@@ -100,7 +117,7 @@ class OnlineSimulationExample:
         print(signals)
         # Backtesting
         # - the code is based on this example https://qlib.readthedocs.io/en/latest/component/strategy.html
-        CSI300_BENCH = "SH000903"
+        CSI300_BENCH = "SH000300"  # NOTE: 本机无中证 100 指数(000903)数据，改用沪深 300
         STRATEGY_CONFIG = {
             "topk": 30,
             "n_drop": 3,

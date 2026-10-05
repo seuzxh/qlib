@@ -26,7 +26,7 @@ class RollingTaskExample:
         self,
         provider_uri="~/.qlib/qlib_data/cn_data",
         region=REG_CN,
-        task_url="mongodb://10.0.0.4:27017/",
+        task_url="mongodb://127.0.0.1:27017",  # NOTE: 原版 10.0.0.4 为官方内网地址，改本机
         task_db_name="rolling_db",
         experiment_name="rolling_exp",
         task_pool=None,  # if user want to  "rolling_task"
@@ -36,7 +36,24 @@ class RollingTaskExample:
     ):
         # TaskManager config
         if task_config is None:
-            task_config = [CSI100_RECORD_XGBOOST_TASK_CONFIG, CSI100_RECORD_LGB_TASK_CONFIG]
+            # 数据窗口适配：本机日线特征 2020-01-02 起（官方默认 2008~2020），
+            # 重设 segments 与 handler 日期；滚动步长 550 交易日下约 3 轮
+            from copy import deepcopy
+
+            _adapt = [deepcopy(CSI100_RECORD_XGBOOST_TASK_CONFIG), deepcopy(CSI100_RECORD_LGB_TASK_CONFIG)]
+            for _task in _adapt:
+                _task["dataset"]["kwargs"]["segments"] = {
+                    "train": ("2020-01-02", "2021-12-31"),
+                    "valid": ("2022-01-01", "2022-06-30"),
+                    "test": ("2022-07-01", "2022-12-31"),
+                }
+                # NOTE: 本机 csi100 成分股只更新到 2020-10-20（过期），改用 csi300
+                _task["dataset"]["kwargs"]["handler"]["kwargs"]["instruments"] = "csi300"
+                _task["dataset"]["kwargs"]["handler"]["kwargs"]["start_time"] = "2020-01-02"
+                _task["dataset"]["kwargs"]["handler"]["kwargs"]["end_time"] = "2026-07-01"
+                _task["dataset"]["kwargs"]["handler"]["kwargs"]["fit_start_time"] = "2020-01-02"
+                _task["dataset"]["kwargs"]["handler"]["kwargs"]["fit_end_time"] = "2021-12-31"
+            task_config = _adapt
         mongo_conf = {
             "task_url": task_url,
             "task_db_name": task_db_name,
