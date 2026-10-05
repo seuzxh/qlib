@@ -69,3 +69,9 @@ examples/catboost_records/
 mlp_records/
 nn_logs/
 nn_records/
+examples/orderbook_data/orderbook_example_data.zip*
+examples/orderbook_data/orig_data/
+examples/orderbook_data/raw_data/
+examples/orderbook_data/data_info/
+examples/orderbook_data/data_finish_info/
+examples/orderbook_data/log_file/
