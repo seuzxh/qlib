@@ -80,3 +80,4 @@ examples/online_srv/mlruns/
 examples/model_rolling/mlruns/
 examples/orderbook_data/*.log
 examples/orderbook_data/rl_nb.log
+examples/output/
