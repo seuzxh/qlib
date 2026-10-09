@@ -66,7 +66,7 @@ class HyperparamOptManager:
         self.fixed_params = fixed_params
         self.saved_params = pd.DataFrame()
 
-        self.best_score = np.Inf
+        self.best_score = np.inf
         self.optimal_name = ""
 
         # Setup
@@ -199,7 +199,7 @@ class HyperparamOptManager:
         """
 
         if np.isnan(loss):
-            loss = np.Inf
+            loss = np.inf
 
         if not os.path.isdir(self.hyperparam_folder):
             os.makedirs(self.hyperparam_folder)

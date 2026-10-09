@@ -81,3 +81,6 @@ examples/model_rolling/mlruns/
 examples/orderbook_data/*.log
 examples/orderbook_data/rl_nb.log
 examples/output/
+examples/tft_records/
+examples/benchmarks/TFT/qlib_tft_model/
+examples/qlib_tft_model/

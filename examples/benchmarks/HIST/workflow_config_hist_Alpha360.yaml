@@ -58,9 +58,9 @@ task:
             loss: mse
             base_model: LSTM
             model_path: "benchmarks/LSTM/model_lstm_csi300.pkl"
-            stock2concept: "benchmarks/HIST/qlib_csi300_stock2concept.npy"
-            stock_index: "benchmarks/HIST/qlib_csi300_stock_index.npy"
-            GPU: -1  # NOTE: 共享 GPU 空闲不足反复 OOM，转 CPU 训练
+            stock2concept: "benchmarks/HIST/qlib_local_stock2concept.npy"  # NOTE: 官方 npy 按其宇宙构建，与自建宇宙不匹配，由 build_local_concept_npy.py 重建
+            stock_index: "benchmarks/HIST/qlib_local_stock_index.npy"
+            GPU: 2
     dataset:
         class: DatasetH
         module_path: qlib.data.dataset

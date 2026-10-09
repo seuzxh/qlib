@@ -57,7 +57,7 @@ task:
             batch_size: 100
             metric: loss
             loss: mse
-            GPU: 6
+            GPU: 0  # NOTE: 配合 CUDA_VISIBLE_DEVICES 屏蔽使用指定物理卡（进程内序号必须为 0）
     dataset:
         class: DatasetH
         module_path: qlib.data.dataset

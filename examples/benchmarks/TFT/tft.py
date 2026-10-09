@@ -6,6 +6,70 @@ from typing import Union
 import numpy as np
 import pandas as pd
 import tensorflow.compat.v1 as tf
+
+# NOTE: TF2 兼容垫片（本示例面向 TF1.x 编写，实测环境为 TF 2.21 CPU）：
+# 1) libs/* 以裸 `import tensorflow as tf` 引用 variable_scope/Saver 等 TF1 符号，
+#    这些符号只存在于 tensorflow.compat.v1 —— 把缺失符号回填到顶层 tensorflow 模块；
+# 2) keras 会话 API（get_session/set_session）在 Keras3/TF2.16+ 已移除，按旧语义补齐
+#    （set_session 进入 as_default，get_session 返回当前 default session）。
+import tensorflow as _tf_root
+
+for _k in dir(tf):
+    if not _k.startswith("_") and not hasattr(_tf_root, _k):
+        try:
+            setattr(_tf_root, _k, getattr(tf, _k))
+        except (AttributeError, TypeError):
+            pass
+
+for _kb_mod in {id(tf.keras.backend): tf.keras.backend}:
+    pass
+# 对所有可能的 keras.backend 模块统一打垫片（TF_USE_LEGACY_KERAS=1 时
+# tf.keras 会解析为 tf_keras 的 backend，与 compat.v1 的不是同一个模块）
+_kb_targets = []
+for _mod_name in ("tensorflow.keras.backend", "tf_keras.backend", "tensorflow.compat.v1.keras.backend"):
+    try:
+        import importlib
+
+        _kb_targets.append(importlib.import_module(_mod_name))
+    except Exception:
+        pass
+# 有状态垫片：记住最后一次 set 的会话（旧 keras 的全局指针语义）。
+# 不能只靠 get_default_session——keras fit 内部进出会话上下文会把默认弹掉
+_kb_state = {"sess": None}
+
+def _kb_get_session():
+    return _kb_state["sess"] or tf.get_default_session()
+
+def _kb_set_session(sess):
+    # 可进出栈：设置新会话前先退出旧上下文，避免默认图/会话栈残留
+    _cm = _kb_state.pop("cm", None)
+    if _cm is not None:
+        try:
+            _cm.__exit__(None, None, None)
+        except Exception:
+            pass
+    _kb_state["sess"] = sess
+    if sess is not None:
+        _cm = sess.as_default()
+        _cm.__enter__()
+        _kb_state["cm"] = _cm
+
+# 无条件覆盖（含运行时 tf.keras.backend 对象本身；部分模块可能带返回 None 的桩）
+_kb_targets.append(tf.keras.backend)
+for _kb in _kb_targets:
+    _kb.get_session = _kb_get_session
+    _kb.set_session = _kb_set_session
+
+# 子模块同理：utils.save/load 用 tf.train.Saver（只在 compat.v1.train 中存在）
+import tensorflow.train as _tf_train_mod
+import tensorflow.compat.v1.train as _v1_train_mod
+
+for _k in dir(_v1_train_mod):
+    if not _k.startswith("_") and not hasattr(_tf_train_mod, _k):
+        try:
+            setattr(_tf_train_mod, _k, getattr(_v1_train_mod, _k))
+        except (AttributeError, TypeError):
+            pass
 import data_formatters.base
 import expt_settings.configs
 import libs.hyperparam_opt
@@ -112,10 +176,15 @@ def process_qlib_data(df, dataset, fillna=False):
     temp_df = temp_df.reset_index(level=0)
     dates = pd.to_datetime(temp_df.index)
     temp_df["date"] = dates
+    # NOTE: 本流程未调用 formatter.transform_inputs，类别列以原始值直接进
+    # 嵌入层（词表大小=训练段去重数）。原始 month(1~12)/year(20xx)/const(1.0)
+    # 都会越界（如 12 月=索引 12 不在 [0,12)），故统一改为零基编码：
+    # month-1 -> 0..11；year 与 const 置 0（对单市场日频数据无信息量，避免
+    # 验证/测试出现训练段未见年份时越界）
     temp_df["day_of_week"] = dates.dayofweek
-    temp_df["month"] = dates.month
-    temp_df["year"] = dates.year
-    temp_df["const"] = 1.0
+    temp_df["month"] = dates.month - 1
+    temp_df["year"] = 0
+    temp_df["const"] = 0.0
     return temp_df
 
 
@@ -164,6 +233,14 @@ class TFTModel(ModelFT):
         )
         return transform_df(df_train), transform_df(df_valid)
 
+    def __getstate__(self):
+        # NOTE: qrun 收尾会把模型对象存 params.pkl；TF 图/SymbolicTensor 不可
+        # pickle，剔除之（权重已另存于 model_folder 检查点，重载走 load）
+        state = self.__dict__.copy()
+        for k in ("model", "sess", "tf_graph", "tf_config"):
+            state.pop(k, None)
+        return state
+
     def fit(self, dataset: DatasetH, MODEL_FOLDER="qlib_tft_model", USE_GPU_ID=0, **kwargs):
         DATASET = self.params["DATASET"]
         LABEL_SHIFT = self.params["label_shift"]
@@ -178,6 +255,11 @@ class TFTModel(ModelFT):
 
         train = process_qlib_data(dtrain, DATASET, fillna=True).dropna()
         valid = process_qlib_data(dvalid, DATASET, fillna=True).dropna()
+        # NOTE: 类别嵌入（identifier）的词表只在训练段拟合；验证/测试段出现
+        # 训练段未见过的标的会导致 embedding_lookup 越界（indices=N not in [0,N)），
+        # 故将后续段过滤为训练段出现过的标的集合（不泄漏未来信息）
+        self._train_ids = set(train["instrument"])
+        valid = valid[valid["instrument"].isin(self._train_ids)]
 
         ExperimentConfig = expt_settings.configs.ExperimentConfig
         config = ExperimentConfig(DATASET)
@@ -188,7 +270,7 @@ class TFTModel(ModelFT):
         self.expt_name = DATASET
         self.label_col = LABEL_COL
 
-        use_gpu = (True, self.gpu_id)
+        use_gpu = (False, self.gpu_id)  # NOTE: 原版硬编码 True；本机为 tensorflow-cpu，强制 CPU
         # ===========================Training Process===========================
         ModelClass = libs.tft_model.TemporalFusionTransformer
         if not isinstance(self.data_formatter, data_formatters.base.GenericDataFormatter):
@@ -217,9 +299,10 @@ class TFTModel(ModelFT):
         params["model_folder"] = self.model_folder
 
         print("*** Begin training ***")
-        best_loss = np.Inf
+        best_loss = np.inf
 
-        tf.reset_default_graph()
+        # NOTE: 原版此处 tf.reset_default_graph()；嵌套默认图下会触发断言，
+        # 且各阶段随后都显式 tf.Graph() 新建图，重置并非必要，注释掉
 
         self.tf_graph = tf.Graph()
         with self.tf_graph.as_default():
@@ -255,8 +338,10 @@ class TFTModel(ModelFT):
         d_test = transform_df(d_test)
         d_test.loc[:, self.label_col] = get_shifted_label(d_test, shifts=self.label_shift, col_shift=self.label_col)
         test = process_qlib_data(d_test, self.expt_name, fillna=True).dropna()
+        if getattr(self, "_train_ids", None):
+            test = test[test["instrument"].isin(self._train_ids)]
 
-        use_gpu = (True, self.gpu_id)
+        use_gpu = (False, self.gpu_id)  # NOTE: 原版硬编码 True；本机为 tensorflow-cpu，强制 CPU
         # ===========================Predicting Process===========================
         default_keras_session = tf.keras.backend.get_session()
 
@@ -266,7 +351,8 @@ class TFTModel(ModelFT):
         params = {**params, **fixed_params}
 
         print("*** Begin predicting ***")
-        tf.reset_default_graph()
+        # NOTE: 原版此处 tf.reset_default_graph()；嵌套默认图下会触发断言，
+        # 且各阶段随后都显式 tf.Graph() 新建图，重置并非必要，注释掉
 
         with self.tf_graph.as_default():
             tf.keras.backend.set_session(self.sess)

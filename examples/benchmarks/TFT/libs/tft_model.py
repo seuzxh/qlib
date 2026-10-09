@@ -461,10 +461,10 @@ class TemporalFusionTransformer:
             if i in self._static_input_loc:
                 raise ValueError("Observation cannot be static!")
 
-        if all_inputs.get_shape().as_list()[-1] != self.input_size:
+        if tf.TensorShape(all_inputs.shape).as_list()[-1] != self.input_size:
             raise ValueError(
                 "Illegal number of inputs! Inputs observed={}, expected={}".format(
-                    all_inputs.get_shape().as_list()[-1], self.input_size
+                    tf.TensorShape(all_inputs.shape).as_list()[-1], self.input_size
                 )
             )
 
@@ -757,7 +757,7 @@ class TemporalFusionTransformer:
             """
 
             # Add temporal features
-            _, num_static, _ = embedding.get_shape().as_list()
+            _, num_static, _ = tf.TensorShape(embedding.shape).as_list()
 
             flatten = tf.keras.layers.Flatten()(embedding)
 
@@ -818,7 +818,7 @@ class TemporalFusionTransformer:
             """
 
             # Add temporal features
-            _, time_steps, embedding_dim, num_inputs = embedding.get_shape().as_list()
+            _, time_steps, embedding_dim, num_inputs = tf.TensorShape(embedding.shape).as_list()
 
             flatten = K.reshape(embedding, [-1, time_steps, embedding_dim * num_inputs])
 
@@ -875,12 +875,12 @@ class TemporalFusionTransformer:
                     return_sequences=True,
                     return_state=return_state,
                     stateful=False,
+                    unroll=True,  # NOTE: 绕开 tf-keras LSTM 梯度 while 循环的 while_grad 连接 bug（展开后不再有 while 节点）
                     # Additional params to ensure LSTM matches CuDNN, See TF 2.0 :
                     # (https://www.tensorflow.org/api_docs/python/tf/keras/layers/LSTM)
                     activation="tanh",
                     recurrent_activation="sigmoid",
                     recurrent_dropout=0,
-                    unroll=False,
                     use_bias=True,
                 )
             return lstm
@@ -960,7 +960,7 @@ class TemporalFusionTransformer:
 
             self._attention_components = attention_components
 
-            adam = tf.keras.optimizers.Adam(lr=self.learning_rate, clipnorm=self.max_gradient_norm)
+            adam = tf.keras.optimizers.legacy.Adam(lr=self.learning_rate, clipnorm=self.max_gradient_norm)  # NOTE: sample_weight_mode=temporal 的旧训练路径需要 legacy 优化器（含 get_updates）
 
             model = tf.keras.Model(inputs=all_inputs, outputs=outputs)
 
