@@ -26,9 +26,9 @@
 | 课次 | 主题 | 核心内容 | 状态 |
 |------|------|----------|------|
 | [01](01-quickstart.md) | 认识 qlib | 框架全景、环境搭建、跑通 QuickStart | ✅ 已就绪 |
-| [02](02-data-layer.md) | 数据层 | 数据准备、二进制数据格式、表达式引擎、`D` 接口 | ⬜ 未开始 |
-| [03](03-workflow.md) | 工作流系统 | `qrun` 与 YAML 配置、`init_instance_by_config` 机制、代码模式 | ⬜ 未开始 |
-| [04](04-data-handler.md) | 数据处理器 | DataHandler / Processor / DatasetH、Alpha158 与 Alpha360 | ⬜ 未开始 |
+| [02](04-data-handler.md#附录第-23-课大纲待补全) | 数据层 | 数据准备、二进制数据格式、表达式引擎、`D` 接口 | ⬜ 大纲 |
+| [03](04-data-handler.md#附录第-23-课大纲待补全) | 工作流系统 | `qrun` 与 YAML 配置、`init_instance_by_config` 机制、代码模式 | ⬜ 大纲 |
+| [04](04-data-handler.md) | DataHandler | Alpha158/Alpha360 因子库、自定义标签、Processor | ✅ 已就绪 |
 | [05](05-model.md) | 模型层 | Model 接口、内置模型（GBDT/MLP/LSTM…）、自定义模型 | ⬜ 未开始 |
 | [06](06-strategy-backtest.md) | 策略与回测 | TopkDropoutStrategy、Executor、Exchange、成本模型 | ⬜ 未开始 |
 | [07](07-recorder-analysis.md) | 实验管理与分析 | Recorder/Experiment、SigAnaRecord、PortAnaRecord、报告解读 | ⬜ 未开始 |
