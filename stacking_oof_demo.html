@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Stacking 滚动 OOF 交互演示</title>
+<style>
+  body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:#f6f7f9;color:#222;margin:0;padding:24px}
+  .wrap{max-width:1120px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 8px}
+  .concl{font-size:15px;font-weight:600;color:#0d5c3f;background:#e8f6ef;border-left:4px solid #1a9e6b;padding:10px 14px;margin:0 0 16px;border-radius:4px}
+  .controls{display:flex;gap:28px;flex-wrap:wrap;background:#fff;border:1px solid #e3e5e8;border-radius:6px;padding:12px 16px;margin-bottom:12px}
+  .ctl{font-size:13px}
+  .ctl label{display:block;margin-bottom:4px;color:#555}
+  .ctl b{color:#111}
+  .warn{display:none;font-size:13px;color:#8a3b12;background:#fdeee2;border-left:4px solid #e8833a;padding:8px 12px;margin-bottom:12px;border-radius:4px}
+  canvas{background:#fff;border:1px solid #e3e5e8;border-radius:6px;display:block}
+  .legend{font-size:13px;margin:8px 2px 20px;display:flex;gap:22px;flex-wrap:wrap}
+  .chip{display:inline-block;width:14px;height:4px;vertical-align:middle;margin-right:6px;border-radius:2px}
+  .row{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:20px}
+  .panel h3{font-size:14px;margin:0 0 6px;color:#333}
+  .note{background:#fff;border:1px solid #e3e5e8;border-radius:6px;padding:16px 20px;font-size:13.5px;line-height:1.9}
+  .note h3{font-size:14px;margin:0 0 8px}
+  .note ul{margin:6px 0;padding-left:20px}
+  .note li{margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Stacking（滚动 OOF ＋ Ridge 元模型）交互演示</h1>
+  <p class="concl" id="concl">计算中…</p>
+
+  <div class="controls">
+    <div class="ctl">
+      <label>训练窗口长度 W（天）：<b id="vW">120</b></label>
+      <input type="range" id="sW" min="40" max="240" step="10" value="120" style="width:200px">
+    </div>
+    <div class="ctl">
+      <label>隔离带 embargo E（天）：<b id="vE">5</b></label>
+      <input type="range" id="sE" min="0" max="10" step="1" value="5" style="width:200px">
+    </div>
+    <div class="ctl">
+      <label>Ridge 正则强度 α：<b id="vA">1.0</b></label>
+      <input type="range" id="sA" min="-2" max="2" step="0.1" value="0" style="width:200px">
+    </div>
+  </div>
+
+  <div class="warn" id="warn"></div>
+
+  <canvas id="main" width="1120" height="380"></canvas>
+  <div class="legend" id="legend"></div>
+
+  <div class="row">
+    <div class="panel">
+      <h3>元模型学到的权重（随时间滚动更新）</h3>
+      <canvas id="weights" width="550" height="240"></canvas>
+    </div>
+    <div class="panel">
+      <h3>滚动 OOF 窗口结构（t0 为当前预测点）</h3>
+      <canvas id="diagram" width="550" height="240"></canvas>
+    </div>
+  </div>
+
+  <div class="note">
+    <h3>机制说明</h3>
+    <ul>
+      <li>基模型 A 模拟树模型（类 LightGBM）：对信号做分段近似。基模型 B 模拟神经网络（类 BP）：对信号做平滑近似。两者误差来源不同。</li>
+      <li>每隔 5 天重训一次元模型。训练只用 [t0−W−E, t0−E) 区间内的 OOF 预测与标签。预测 [t0, t0+5) 的信号。</li>
+      <li>标签为未来 5 日收益。embargo E ≥ 5 才能阻断训练标签与预测期的重叠。把 E 调到 5 以下，观察样本内 IC 虚高、样本外 IC 衰减。</li>
+      <li>α 控制 Ridge 收缩。α 过小，权重拟合 OOF 噪声，权重曲线剧烈抖动。α 过大，权重压向零，信号失效。</li>
+      <li>W 存在权衡。W 太小，权重不稳定。W 太大，风格切换（第 250 天虚线）后权重调整迟缓。</li>
+      <li>简化假设：基模型预测已预先生成，页面只演示元模型层的滚动训练与防泄漏机制。</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+// ============ 数据模拟（固定随机种子，参数变化时只重算元模型层） ============
+const T = 500, N = 200, H = 5, RHO = 0.6;
+
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rand = mulberry32(42);
+function gauss(){let u=0,v=0;while(u===0)u=rand();while(v===0)v=rand();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+
+const s=[], dret=[], L=[], pA=[], pB=[];
+for(let t=0;t<T;t++){
+  s.push(new Float64Array(N)); dret.push(new Float64Array(N));
+  L.push(new Float64Array(N).fill(NaN));
+  pA.push(new Float64Array(N)); pB.push(new Float64Array(N));
+  for(let i=0;i<N;i++){
+    s[t][i] = (t===0) ? gauss() : RHO*s[t-1][i] + Math.sqrt(1-RHO*RHO)*gauss();
+    dret[t][i] = 0.7*s[t][i] + 0.9*gauss();
+  }
+}
+// 前向标签：未来 5 日收益之和
+for(let t=0;t<T-H;t++) for(let i=0;i<N;i++){let acc=0;for(let k=1;k<=H;k++)acc+=dret[t+k][i];L[t][i]=acc;}
+// 基模型预测（第 250 天风格切换：A 变噪，B 变准）
+let mA=0,mB=0,cnt=0;
+for(let t=0;t<T;t++) for(let i=0;i<N;i++){
+  const regime = t < T/2;
+  const q = Math.round(s[t][i]*1.3)/1.3;                 // A：分段近似
+  pA[t][i] = q + (regime?0.9:1.8)*gauss();
+  pB[t][i] = Math.tanh(1.2*s[t][i]) + (regime?1.0:0.5)*gauss(); // B：平滑近似
+  mA+=pA[t][i]; mB+=pB[t][i]; cnt++;
+}
+// 全局标准化，便于 α 行为稳定
+mA/=cnt; mB/=cnt;
+let vA=0,vB=0;
+for(let t=0;t<T;t++) for(let i=0;i<N;i++){vA+=(pA[t][i]-mA)**2;vB+=(pB[t][i]-mB)**2;}
+vA=Math.sqrt(vA/cnt); vB=Math.sqrt(vB/cnt);
+for(let t=0;t<T;t++) for(let i=0;i<N;i++){pA[t][i]=(pA[t][i]-mA)/vA;pB[t][i]=(pB[t][i]-mB)/vB;}
+
+// ============ 统计工具 ============
+function ranks(arr,n){const idx=[];for(let i=0;i<n;i++)if(isFinite(arr[i]))idx.push(i);idx.sort((a,b)=>arr[a]-arr[b]);const r=new Float64Array(n).fill(NaN);for(let k=0;k<idx.length;k++)r[idx[k]]=k;return r}
+function spearman(x,y,n){
+  const rx=ranks(x,n), ry=ranks(y,n);
+  let sx=0,sy=0,c=0;
+  for(let i=0;i<n;i++) if(isFinite(rx[i])){sx+=rx[i];sy+=ry[i];c++;}
+  if(c<10)return NaN;
+  sx/=c; sy/=c;
+  let sxy=0,sxx=0,syy=0;
+  for(let i=0;i<n;i++) if(isFinite(rx[i])){const a=rx[i]-sx,b=ry[i]-sy;sxy+=a*b;sxx+=a*a;syy+=b*b;}
+  return (sxx>0&&syy>0)? sxy/Math.sqrt(sxx*syy) : NaN;
+}
+function rollMean(arr,k){const out=new Array(arr.length).fill(NaN);const q=[];let sum=0;
+  for(let t=0;t<arr.length;t++){const v=arr[t];q.push(v);if(isFinite(v))sum+=v;
+    if(q.length>k)sum-=q.shift();
+    if(q.length===k)out[t]=sum/k;}
+  return out;}
+function meanStd(arr){let s=0,s2=0,c=0;for(const v of arr)if(isFinite(v)){s+=v;s2+=v*v;c++;}
+  if(!c)return[NaN,NaN];const m=s/c;return[m,Math.sqrt(Math.max(0,s2/c-m*m))];}
+
+// 基模型逐日 Rank IC（只算一次）
+const icA=new Array(T).fill(NaN), icB=new Array(T).fill(NaN);
+for(let t=0;t<T-H;t++){icA[t]=spearman(pA[t],L[t],N);icB[t]=spearman(pB[t],L[t],N);}
+
+// ============ 元模型：滚动 OOF + Ridge ============
+function ridge2(saa,sab,sbb,say,sby,alpha,n){
+  const a=alpha*n;
+  const d00=saa+a, d11=sbb+a, det=d00*d11-sab*sab;
+  if(Math.abs(det)<1e-12)return[0,0];
+  return[(d11*say-sab*sby)/det,(d00*sby-sab*say)/det];
+}
+
+function runStacking(W,E,alpha){
+  const icS=new Array(T).fill(NaN);
+  const w1s=new Array(T).fill(NaN), w2s=new Array(T).fill(NaN);
+  let trainICsum=0, trainICcnt=0;
+  for(let t0=W+E;t0<T-H;t0+=5){
+    // 训练窗口 [t0-W-E, t0-E)
+    let saa=0,sab=0,sbb=0,say=0,sby=0,n=0;
+    for(let d=t0-W-E;d<t0-E;d++){
+      if(d<0||d>=T-H)continue;
+      for(let i=0;i<N;i++){
+        if(!isFinite(L[d][i]))continue;
+        const a=pA[d][i],b=pB[d][i],y=L[d][i];
+        saa+=a*a;sab+=a*b;sbb+=b*b;say+=a*y;sby+=b*y;n++;
+      }
+    }
+    if(n<500)continue;
+    const w=ridge2(saa,sab,sbb,say,sby,alpha,n);
+    const w1=w[0],w2=w[1];
+    // 样本内 IC（隔 3 天抽样，控制计算量）
+    for(let d=t0-W-E;d<t0-E;d+=3){
+      if(d<0||d>=T-H)continue;
+      const f=new Float64Array(N);
+      for(let i=0;i<N;i++)f[i]=w1*pA[d][i]+w2*pB[d][i];
+      const ic=spearman(f,L[d],N);
+      if(isFinite(ic)){trainICsum+=ic;trainICcnt++;}
+    }
+    // 样本外预测 [t0, t0+5)
+    for(let t=t0;t<Math.min(t0+5,T-H);t++){
+      w1s[t]=w1;w2s[t]=w2;
+      const f=new Float64Array(N);
+      for(let i=0;i<N;i++)f[i]=w1*pA[t][i]+w2*pB[t][i];
+      icS[t]=spearman(f,L[t],N);
+    }
+  }
+  return{icS,w1s,w2s,trainIC:trainICcnt?trainICsum/trainICcnt:NaN};
+}
+
+// ============ 绘图 ============
+function drawSeries(cv,series,opts){
+  const ctx=cv.getContext("2d");
+  const Wpx=cv.width,Hpx=cv.height;
+  ctx.clearRect(0,0,Wpx,Hpx);
+  const ml=52,mr=12,mt=12,mb=26;
+  const pw=Wpx-ml-mr, ph=Hpx-mt-mb;
+  let ymin=Infinity,ymax=-Infinity;
+  for(const sr of series)for(const v of sr.data)if(isFinite(v)){ymin=Math.min(ymin,v);ymax=Math.max(ymax,v);}
+  if(!isFinite(ymin))return;
+  const pad=(ymax-ymin)*0.15+1e-6; ymin-=pad; ymax+=pad;
+  if(opts&&opts.symmetric){const m=Math.max(Math.abs(ymin),Math.abs(ymax));ymin=-m;ymax=m;}
+  const x0=T0=>ml+ (T0/T)*pw;
+  const y0=v=>mt+(ymax-v)/(ymax-ymin)*ph;
+  // 网格与纵轴刻度
+  ctx.strokeStyle="#eceef1";ctx.fillStyle="#888";ctx.font="11px sans-serif";ctx.textAlign="right";
+  for(let g=0;g<=4;g++){
+    const v=ymin+(ymax-ymin)*g/4, y=y0(v);
+    ctx.beginPath();ctx.moveTo(ml,y);ctx.lineTo(Wpx-mr,y);ctx.stroke();
+    ctx.fillText(v.toFixed(3),ml-6,y+4);
+  }
+  // 零线
+  if(ymin<0&&ymax>0){ctx.strokeStyle="#bbb";ctx.beginPath();ctx.moveTo(ml,y0(0));ctx.lineTo(Wpx-mr,y0(0));ctx.stroke();}
+  // 风格切换虚线
+  if(opts&&opts.regimeLine){
+    ctx.strokeStyle="#c0392b";ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.moveTo(x0(T/2),mt);ctx.lineTo(x0(T/2),Hpx-mb);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="#c0392b";ctx.textAlign="left";
+    ctx.fillText("风格切换",x0(T/2)+4,mt+12);
+  }
+  // 横轴
+  ctx.fillStyle="#888";ctx.textAlign="center";
+  for(let d=0;d<=T;d+=100)ctx.fillText(d,x0(d),Hpx-8);
+  // 曲线
+  for(const sr of series){
+    ctx.strokeStyle=sr.color;ctx.lineWidth=1.8;ctx.beginPath();
+    let started=false;
+    for(let t=0;t<sr.data.length;t++){
+      const v=sr.data[t];
+      if(!isFinite(v)){started=false;continue;}
+      const X=x0(t),Y=y0(v);
+      if(!started){ctx.moveTo(X,Y);started=true;}else ctx.lineTo(X,Y);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawDiagram(cv,W,E){
+  const ctx=cv.getContext("2d");
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const total=W+E+5+20;
+  const x=v=>30+v/total*(cv.width-60);
+  const y=100,h=44;
+  // 训练窗口
+  ctx.fillStyle="#dbe7fd";ctx.strokeStyle="#3a7bd5";
+  ctx.fillRect(x(0),y,x(W)-x(0),h);ctx.strokeRect(x(0),y,x(W)-x(0),h);
+  // embargo
+  ctx.fillStyle="#fde3d3";ctx.strokeStyle="#e8833a";
+  ctx.fillRect(x(W),y,x(W+E)-x(W),h);ctx.strokeRect(x(W),y,x(W+E)-x(W),h);
+  // 预测窗口
+  ctx.fillStyle="#d8f0e5";ctx.strokeStyle="#1a9e6b";
+  ctx.fillRect(x(W+E),y,x(W+E+5)-x(W+E),h);ctx.strokeRect(x(W+E),y,x(W+E+5)-x(W+E),h);
+  // t0 线
+  ctx.strokeStyle="#c0392b";ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(x(W+E),y-16);ctx.lineTo(x(W+E),y+h+16);ctx.stroke();ctx.setLineDash([]);
+  // 标签
+  ctx.fillStyle="#333";ctx.font="13px sans-serif";ctx.textAlign="center";
+  ctx.fillText("训练窗口 W = "+W+" 天（只用 OOF）", (x(0)+x(W))/2, y+h/2+5);
+  ctx.fillText("embargo E = "+E, (x(W)+x(W+E))/2, y+h/2+5);
+  ctx.fillText("预测 5 天", (x(W+E)+x(W+E+5))/2, y+h/2+5);
+  ctx.fillStyle="#c0392b";ctx.fillText("t0（当前预测点）", x(W+E), y-22);
+  ctx.fillStyle="#888";ctx.font="12px sans-serif";
+  ctx.fillText("标签 = 未来 5 日收益。E ≥ 5 时训练标签不触碰预测期。", cv.width/2, y+h+38);
+  ctx.fillText("下一次重训：窗口整体右移 5 天。", cv.width/2, y+h+58);
+}
+
+// ============ 交互 ============
+const COLORS={A:"#e8833a",B:"#3a7bd5",S:"#1a9e6b"};
+function update(){
+  const W=+document.getElementById("sW").value;
+  const E=+document.getElementById("sE").value;
+  const alpha=Math.pow(10,+document.getElementById("sA").value);
+  document.getElementById("vW").textContent=W;
+  document.getElementById("vE").textContent=E;
+  document.getElementById("vA").textContent=alpha.toFixed(alpha<1?2:alpha<10?1:0);
+
+  const res=runStacking(W,E,alpha);
+  const icS=res.icS,w1s=res.w1s,w2s=res.w2s,trainIC=res.trainIC;
+  const rA=rollMean(icA,20), rB=rollMean(icB,20), rS=rollMean(icS,20);
+  const mS=meanStd(icS),mA2=meanStd(icA),mB2=meanStd(icB);
+
+  drawSeries(document.getElementById("main"),[
+    {data:rA,color:COLORS.A},{data:rB,color:COLORS.B},{data:rS,color:COLORS.S}
+  ],{symmetric:true,regimeLine:true});
+  drawSeries(document.getElementById("weights"),[
+    {data:w1s,color:COLORS.A},{data:w2s,color:COLORS.B}
+  ],{regimeLine:true});
+  drawDiagram(document.getElementById("diagram"),W,E);
+
+  const best=(mS[0]>=mA2[0]&&mS[0]>=mB2[0]);
+  document.getElementById("concl").textContent=
+    "当前参数：Stacking 样本外平均 Rank IC = "+mS[0].toFixed(4)+
+    "（基模型 A = "+mA2[0].toFixed(4)+"，基模型 B = "+mB2[0].toFixed(4)+"），"+
+    "IC 波动 σ = "+mS[1].toFixed(4)+"。"+
+    (best?"Stacking 同时取得更高均值与更低波动。":"当前参数下 Stacking 未跑赢，请调节滑块找原因。");
+
+  document.getElementById("legend").innerHTML=
+    '<span><span class="chip" style="background:'+COLORS.A+'"></span>基模型 A（类 LightGBM）IC='+mA2[0].toFixed(4)+'</span>'+
+    '<span><span class="chip" style="background:'+COLORS.B+'"></span>基模型 B（类 BP 网络）IC='+mB2[0].toFixed(4)+'</span>'+
+    '<span><span class="chip" style="background:'+COLORS.S+'"></span>Stacking 信号 IC='+mS[0].toFixed(4)+'，样本内 IC='+trainIC.toFixed(4)+'</span>';
+
+  const warn=document.getElementById("warn");
+  if(E<H){
+    warn.style.display="block";
+    warn.textContent="警告：embargo E = "+E+" 小于标签周期 5 天。训练标签包含预测期信息，样本内 IC 虚高，样本外权重被污染。把 E 调到 5 以上再对比。";
+  }else{
+    warn.style.display="none";
+  }
+}
+for(const id of["sW","sE","sA"])document.getElementById(id).addEventListener("input",update);
+update();
+</script>
+</body>
+</html>
